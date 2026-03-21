@@ -15,7 +15,7 @@ def batch_tmh(folder_path, new_save_path, tmh1_code, tmh2_code):
     for f in pac_files:
         basename = os.path.basename(f)
         if ".tmh" in basename:
-            tmh_file.append(f)
+            tmh_files.append(f)
         if tmh1_code and tmh1_code in basename:
             tmh_files1.append(f)
         if tmh2_code and tmh2_code in basename:

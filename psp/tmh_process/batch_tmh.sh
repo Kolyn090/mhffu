@@ -112,3 +112,13 @@ inputfolder="../export/extract/weapon/"
 outputfolder="../export/tmh/weapon/"
 echo "Process $inputfolder -> $outputfolder"
 python3 batch_tmh.py "$inputfolder" "$outputfolder" --tmh1_code "0002"
+
+inputfolder="../export/out/cockpit/"
+outputfolder="../export/tmh/cockpit/"
+echo "Process $inputfolder -> $outputfolder"
+python3 batch_tmh.py "$inputfolder" "$outputfolder"
+
+inputfolder="../export/out/system/"
+outputfolder="../export/tmh/system/"
+echo "Process $inputfolder -> $outputfolder"
+python3 batch_tmh.py "$inputfolder" "$outputfolder"
