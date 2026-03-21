@@ -2,7 +2,7 @@ import struct
 from logger import Logger, LogStyle
 from base import run_ge, create_mesh
 
-debug = True
+debug = False
 
 def dbg_seek(pmo, offset, label, indent:int):
     pmo.seek(0, 2)
