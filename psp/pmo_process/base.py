@@ -2,6 +2,27 @@ import array
 import struct
 from logger import Logger, LogStyle
 
+def log_seek(pmo, target, indent=0):
+    before = pmo.tell()
+    Logger.highlight(f"[BEFORE JUMP] pos={before:08X}", indent)
+
+    pmo.seek(target)
+
+    after = pmo.tell()
+    delta = after - before
+
+    if delta > 0:
+        direction = "FORWARD"
+    elif delta < 0:
+        direction = "BACKWARD"
+    else:
+        direction = "STAY"
+
+    Logger.highlight(
+        f"[AFTER JUMP ] pos={after:08X} | Δ={delta:+} (0x{delta:+X}) ({direction})",
+        indent
+    )
+
 def run_ge(pmo, scale, verbose=False, extra_indent=0):
     Logger.enable = verbose
     file_address = pmo.tell()
@@ -47,10 +68,12 @@ def run_ge(pmo, scale, verbose=False, extra_indent=0):
             if vertex_address is not None:
                 index_offset = len(vertices)
             vertex_address = file_address + (command & 0xffffff)
+            Logger.highlight(f"Obtain VADDR(Vertex Address)={vertex_address:08X}", 1+extra_indent)
         # IADDR - Index Address (BASE)
         elif command_type == 0x02:
             Logger.info("IADDR - Index Address (BASE): 0x02", 1+extra_indent)
             index_address = file_address + (command & 0xffffff)
+            Logger.highlight(f"Obtain IADDR(Index Address)={index_address:08X}", 1+extra_indent)
         # PRIM - Primitive Kick
         elif command_type == 0x04:
             Logger.info("PRIM - Primitive Kick: 0x04", 1+extra_indent)
@@ -59,28 +82,33 @@ def run_ge(pmo, scale, verbose=False, extra_indent=0):
             Logger.info(f"PRIM type={primative_type} count={index_count}", 2+extra_indent)
             Logger.debug(f"VADDR(Vertex Address)={vertex_address:08X} IADDR(Index Address)={index_address:08X}", 2+extra_indent)
             command_address = pmo.tell()
-            index = range(len(vertices) - index_offset, len(vertices) + index_count - index_offset)
-            Logger.debug(f"indices (len: {len(index)}): {list(index)}", 2+extra_indent)
+            indices = range(len(vertices) - index_offset, len(vertices) + index_count - index_offset)
+            Logger.debug(f"indices (len: {len(indices)}): {list(indices)}", 2+extra_indent)
 
             if index_format is not None:
+                Logger.highlight("> Index format is not None.", 2+extra_indent, color=LogStyle.GREEN)
                 Logger.debug(f"Index Format: {index_format}", 2+extra_indent)
-                index = array.array(index_format)
-                Logger.debug(f"Index after format: {index}", 2+extra_indent)
-                Logger.debug(f"[BEFORE JUMP] pos={pmo.tell():08X}", 2+extra_indent)
-                pmo.seek(index_address)
-                Logger.debug(f"[AFTER JUMP ] pos={pmo.tell():08X}", 2+extra_indent)
-                index.fromfile(pmo, index_count)
-                Logger.debug(f"Index after fromfile: {index}", 2+extra_indent)
+                indices = array.array(index_format)
+                Logger.debug(f"Index after format: {indices}", 2+extra_indent)
+
+                log_seek(pmo, index_address, 2+extra_indent)
+
+                indices.fromfile(pmo, index_count)
+                Logger.debug(f"Index after fromfile: {indices}", 2+extra_indent)
                 index_address = pmo.tell()
-                Logger.debug(f"Index Address: {index_address:08X}", 2+extra_indent)
+                Logger.debug(f"Current Index Address: {index_address:08X}", 2+extra_indent)
+                Logger.highlight(f"Moved ptr to {pmo.tell():08X}", 2+extra_indent)
+            else:
+                Logger.debug("> Index format is None.", 2+extra_indent, color=LogStyle.RED)
 
             vertex_size = struct.calcsize(vertex_format)
             Logger.debug(f"vertex_size={vertex_size} format={vertex_format}", 2+extra_indent)
+
             Logger.debug(f"Vertex Loop Begin:", 2+extra_indent)
-            for i in index:
-                Logger.highlight(f"[BEFORE JUMP] pos={pmo.tell():08X}", 3+extra_indent)
-                pmo.seek(vertex_address + vertex_size * i)
-                Logger.highlight(f"[AFTER JUMP ] pos={pmo.tell():08X}", 3+extra_indent)
+            for i in range(len(indices)):
+                idx = indices[i]
+                Logger.highlight(f"I-Loop ({i+1} / {len(indices)})", 3+extra_indent, color=LogStyle.RED)
+                log_seek(pmo, vertex_address + vertex_size * idx, 3+extra_indent)
 
                 raw_bytes = pmo.read(vertex_size)
                 raw_vertex = list(struct.unpack(vertex_format, raw_bytes))
@@ -100,7 +128,7 @@ def run_ge(pmo, scale, verbose=False, extra_indent=0):
                 vertex['x'] = (raw_vertex.pop() / position_trans) * scale[0]
 
                 Logger.debug(f"decoded_vertex={vertex}", 3+extra_indent)
-                Logger.debug(f"pos=({vertex['x']:.2f},{vertex['y']:.2f},{vertex['z']:.2f})", 3+extra_indent)
+                Logger.debug(f"pos=({vertex['x']:.2f}, {vertex['y']:.2f}, {vertex['z']:.2f})", 3+extra_indent)
                 
                 Logger.debug(f"raw_vertex={raw_vertex}", 3+extra_indent)
 
@@ -111,7 +139,7 @@ def run_ge(pmo, scale, verbose=False, extra_indent=0):
                     vertex['j'] = raw_vertex.pop() / normal_trans
                     vertex['i'] = raw_vertex.pop() / normal_trans
 
-                    Logger.debug(f"normal=({vertex['i']:.2f},{vertex['j']:.2f},{vertex['k']:.2f})", 3+extra_indent)
+                    Logger.debug(f"normal=({vertex['i']:.2f}, {vertex['j']:.2f}, {vertex['k']:.2f})", 3+extra_indent)
                     Logger.debug(f"raw_vertex={raw_vertex}", 3+extra_indent)
 
                 if color_trans is not None:
@@ -121,19 +149,17 @@ def run_ge(pmo, scale, verbose=False, extra_indent=0):
                 if texture_trans is not None:
                     vertex['v'] = raw_vertex.pop() / texture_trans
                     vertex['u'] = raw_vertex.pop() / texture_trans
-                    Logger.debug(f"uv=({vertex['y']:.2f},{vertex['v']:.2f})", 3+extra_indent)
+                    Logger.debug(f"uv=({vertex['y']:.2f}, {vertex['v']:.2f})", 3+extra_indent)
                     Logger.debug(f"raw_vertex={raw_vertex}", 3+extra_indent)
 
                 if weight_trans is not None:
                     pass # NOTE: the OBJ format does not support vertex weights
-                if len(vertices) <= (i + index_offset):
-                    vertices.extend([None] * (i + index_offset + 1 - len(vertices)))
-                    Logger.debug(f"index[{i}] -> vertex_id={i + index_offset}", 3+extra_indent)
-                vertices[i + index_offset] = vertex
-
-            Logger.debug(f"[BEFORE JUMP] pos={pmo.tell():08X}", 1+extra_indent)
-            pmo.seek(command_address)
-            Logger.debug(f"[AFTER JUMP ] pos={pmo.tell():08X}", 1+extra_indent)
+                if len(vertices) <= (idx + index_offset):
+                    vertices.extend([None] * (idx + index_offset + 1 - len(vertices)))
+                    Logger.debug(f"index[{idx}] -> vertex_id={idx + index_offset}", 3+extra_indent)
+                vertices[idx + index_offset] = vertex
+            
+            log_seek(pmo, command_address, 1+extra_indent)
 
             # r = range(index_count - 2)
             # if primative_type == 3:
@@ -158,31 +184,27 @@ def run_ge(pmo, scale, verbose=False, extra_indent=0):
             Logger.debug(f"Face Loop Begin:", 2+extra_indent)
 
             if primative_type == 3:  # TRIANGLES
-                for i in range(0, index_count, 3):
-                    v0 = index[i] + index_offset
-                    v1 = index[i+1] + index_offset
-                    v2 = index[i+2] + index_offset
+                for j in range(0, index_count, 3):
+                    v0 = indices[j] + index_offset
+                    v1 = indices[j+1] + index_offset
+                    v2 = indices[j+2] + index_offset
 
                     faces.append({'v1': v0, 'v2': v1, 'v3': v2})
-
-                    if i < 5:
-                        Logger.debug(f"face: {(v0, v1, v2)}", 3+extra_indent)
+                    Logger.debug(f"face: {(v0, v1, v2)}", 3+extra_indent)
 
             elif primative_type == 4:  # TRIANGLE STRIP
-                for i in range(index_count - 2):
-                    if i % 2 == 0:
-                        v0 = index[i] + index_offset
-                        v1 = index[i+1] + index_offset
-                        v2 = index[i+2] + index_offset
+                for j in range(index_count - 2):
+                    if j % 2 == 0:
+                        v0 = indices[j] + index_offset
+                        v1 = indices[j+1] + index_offset
+                        v2 = indices[j+2] + index_offset
                     else:
-                        v0 = index[i+1] + index_offset
-                        v1 = index[i] + index_offset
-                        v2 = index[i+2] + index_offset
+                        v0 = indices[j+1] + index_offset
+                        v1 = indices[j] + index_offset
+                        v2 = indices[j+2] + index_offset
 
                     faces.append({'v1': v0, 'v2': v1, 'v3': v2})
-
-                    if i < 5:
-                        Logger.debug(f"face: {(v0, v1, v2)}", 3+extra_indent)
+                    Logger.debug(f"face: {(v0, v1, v2)}", 3+extra_indent)
             else:
                 raise ValueError(f'Unsupported primitive type: 0x{primative_type:02X}')
             
@@ -243,7 +265,10 @@ def run_ge(pmo, scale, verbose=False, extra_indent=0):
                     vertex_format += (None, '3b', '3h', '3f')[position]
                     position_trans = (None, 0x7f, 0x7fff, 1)[position]
 
-            Logger.debug(f"Vertex Format: {vertex_format}", 1+extra_indent)
+            Logger.highlight(f"Obtain Vertex Format={vertex_format}", 1+extra_indent)
+            Logger.highlight(f"Obtain Position Trans={position_trans}", 1+extra_indent)
+            Logger.highlight(f"Obtained Normal Trans={normal_trans}", 1+extra_indent)
+            Logger.highlight(f"Obtained Texture Trans={texture_trans}", 1+extra_indent)
 
             index_format = (None, 'B', 'H', 'I')[(command >> 11) & 3]
             if (command >> 18) & 7 > 0:
