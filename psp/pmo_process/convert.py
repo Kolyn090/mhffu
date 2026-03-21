@@ -202,7 +202,7 @@ def convert_mh2_pmo(pmo, obj, second=None):
                 offset = pmo_header[12] + raw
                 test_offset = pmo_header[12] + raw
                 Logger.debug(f"Offset1: {offset}", indent=2)
-                Logger.highlight(f" Offset2: {test_offset}", indent=2, color=LogStyle.YELLOW if offset != test_offset else Logger.BRIGHT_BLACK)
+                Logger.highlight(f" Offset2: {test_offset}", indent=2, color=LogStyle.YELLOW if offset != test_offset else LogStyle.BRIGHT_BLACK)
 
                 Logger.info("Vertex Data (GE   ): ", end='', indent=2)
                 dbg_seek(pmo, offset, "vertex_data", 0)
