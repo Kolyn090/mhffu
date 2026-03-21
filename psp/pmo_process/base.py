@@ -2,8 +2,8 @@ import array
 import struct
 from logger import Logger, LogStyle
 
-def run_ge(pmo, scale, debug=True, extra_indent=0):
-    Logger.enable = debug
+def run_ge(pmo, scale, verbose=False, extra_indent=0):
+    Logger.enable = verbose
     file_address = pmo.tell()
 
     pmo.seek(0, 2)

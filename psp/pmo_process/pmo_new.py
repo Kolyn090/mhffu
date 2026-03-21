@@ -20,7 +20,9 @@ import os
 import struct
 from convert import convert_mh2_pmo, convert_mh3_pmo
 
-def convert_pmo(pmo_file, mtl_file, obj_file, second_file=None):
+def convert_pmo(pmo_file, mtl_file, 
+                obj_file, second_file=None, 
+                verbose=False, enforce_ge_verbose=False):
     mtl_file = os.path.basename(mtl_file)
     second = None
     if second_file:
@@ -32,7 +34,7 @@ def convert_pmo(pmo_file, mtl_file, obj_file, second_file=None):
             convert_mh3_pmo(pmo, obj, second)
         elif type == b'pmo\x00' and version == b'1.0\x00':
             obj.write('mtllib {}\n'.format(mtl_file))
-            convert_mh2_pmo(pmo, obj, second)
+            convert_mh2_pmo(pmo, obj, second, verbose, enforce_ge_verbose)
         else:
             if second:
                 second.close()
@@ -47,7 +49,9 @@ if __name__ == '__main__':
     parser.add_argument('mtlfile', help='MTL input file')
     parser.add_argument('outputfile', help='OBJ output file')
     parser.add_argument('--second', help='Second part of large monster PMO', required=False)
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--enforce_ge_verbose", action="store_true")
     args = parser.parse_args()
     outputfile = args.outputfile
     os.makedirs(os.path.dirname(outputfile), exist_ok=True)
-    convert_pmo(args.pmofile, args.mtlfile, outputfile, args.second)
+    convert_pmo(args.pmofile, args.mtlfile, outputfile, args.second, args.verbose, args.enforce_ge_verbose)

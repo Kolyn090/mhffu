@@ -2,8 +2,6 @@ import struct
 from logger import Logger, LogStyle
 from base import run_ge, create_mesh
 
-debug = False
-
 def dbg_seek(pmo, offset, label, indent:int):
     pmo.seek(0, 2)
     size = pmo.tell()
@@ -156,8 +154,8 @@ def read_vertex_group(pmo, offset):
 # MAIN FUNCTION
 # =========================
 
-def convert_mh2_pmo(pmo, obj, second=None):
-    Logger.enable = debug
+def convert_mh2_pmo(pmo, obj, second=None, verbose=False, enforce_ge_verbose=False):
+    Logger.enable = verbose
     # Logger.set_log_file("log.txt")
     offsets = {'v': 1, 'vt': 1, 'vn': 1}
 
@@ -192,10 +190,11 @@ def convert_mh2_pmo(pmo, obj, second=None):
 
             material = struct.unpack('4I', pmo.read(16))[2]
 
+            ge_extra_indent = 0 if enforce_ge_verbose else 3
             if second:
                 second.seek(vertex_group_header[3])
-                mesh.append(run_ge(second, scale, False, 3) + (material,))
-                Logger.enable = debug
+                mesh.append(run_ge(second, scale, verbose or enforce_ge_verbose, ge_extra_indent) + (material,))
+                Logger.enable = verbose
             else:
                 raw = vertex_group_header[3]
                 Logger.debug(f"Raw (before offset): {raw}", indent=2)
@@ -208,8 +207,8 @@ def convert_mh2_pmo(pmo, obj, second=None):
                 dbg_seek(pmo, offset, "vertex_data", 0)
 
                 try:
-                    result = run_ge(pmo, scale, False, 3)
-                    Logger.enable = debug
+                    result = run_ge(pmo, scale, verbose or enforce_ge_verbose, ge_extra_indent)
+                    Logger.enable = verbose
                     if not result:
                         Logger.warn(f"Empty GE at mesh {i}, group {j}", 1)
                         break
@@ -219,7 +218,6 @@ def convert_mh2_pmo(pmo, obj, second=None):
                     Logger.warn(f"Stopping mesh {i}, group {j}: {e}", 1)
                     break
 
-        # TODO: change back
         create_mesh(obj, offsets, mesh)
 
 def convert_mh3_pmo(pmo, obj, second=None):
