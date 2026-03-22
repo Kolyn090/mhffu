@@ -161,26 +161,6 @@ def run_ge(pmo, scale, verbose=False, extra_indent=0):
             
             log_seek(pmo, command_address, 1+extra_indent)
 
-            # r = range(index_count - 2)
-            # if primative_type == 3:
-            #     Logger.info(f"Primitive mode: {'TRIANGLES' if primative_type == 3 else 'TRIANGLE_STRIP'}", 2)
-            #     r = range(0, index_count, 3)
-            # elif primative_type != 4:
-            #     ValueError('Unsupported primative type: 0x{:02X}'.format(primative_type))
-            
-            # Logger.debug(f"Face Loop Begin:", 2)
-            # for i in r:
-            #     face = {'v3': index[i+2] + index_offset}
-            #     if i < 5:
-            #         Logger.debug(f"face: {face}", 3)
-            #     if ((i + face_order) % 2) or ((primative_type == 3) and face_order):
-            #         face['v2'] = index[i] + index_offset
-            #         face['v1'] = index[i+1] + index_offset
-            #     else:
-            #         face['v1'] = index[i] + index_offset
-            #         face['v2'] = index[i+1] + index_offset
-            #     faces.append(face)
-
             Logger.debug(f"Face Loop Begin:", 2+extra_indent)
 
             if primative_type == 3:  # TRIANGLES
@@ -194,13 +174,13 @@ def run_ge(pmo, scale, verbose=False, extra_indent=0):
 
             elif primative_type == 4:  # TRIANGLE STRIP
                 for j in range(index_count - 2):
-                    if j % 2 == 0:
-                        v0 = indices[j] + index_offset
-                        v1 = indices[j+1] + index_offset
-                        v2 = indices[j+2] + index_offset
-                    else:
+                    if (j + face_order) % 2:
                         v0 = indices[j+1] + index_offset
                         v1 = indices[j] + index_offset
+                        v2 = indices[j+2] + index_offset
+                    else:
+                        v0 = indices[j] + index_offset
+                        v1 = indices[j+1] + index_offset
                         v2 = indices[j+2] + index_offset
 
                     faces.append({'v1': v0, 'v2': v1, 'v3': v2})

@@ -24,7 +24,7 @@ def organize_obj_mtl(ofp, tfp, new_save_path, pmo_code, tmh_code):
         # print(new_obj_path)
         shutil.copy(obj_file, new_obj_path)
 
-        # ✅ Fix mtllib
+        # Fix mtllib
         with open(new_obj_path, "r", encoding="utf-8", errors="ignore") as f:
             text = f.read()
 
@@ -40,7 +40,7 @@ def organize_obj_mtl(ofp, tfp, new_save_path, pmo_code, tmh_code):
         if os.path.exists(target_mtl_folder):
             shutil.copytree(target_mtl_folder, texture_dest, dirs_exist_ok=True)
 
-            # ✅ Move .mtl OUT of texture folder
+            # Move .mtl OUT of texture folder
             for file in os.listdir(texture_dest):
                 if file.endswith(".mtl"):
                     src_mtl = os.path.join(texture_dest, file)
@@ -49,7 +49,7 @@ def organize_obj_mtl(ofp, tfp, new_save_path, pmo_code, tmh_code):
                     shutil.move(src_mtl, dst_mtl)
                     break  # assume only one .mtl
 
-            # ✅ (IMPORTANT) Fix texture paths inside .mtl
+            # Fix texture paths inside .mtl
             mtl_path = os.path.join(save_folder_path, "material.mtl")
             if os.path.exists(mtl_path):
                 with open(mtl_path, "r", encoding="utf-8", errors="ignore") as f:
