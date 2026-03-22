@@ -9,7 +9,7 @@ def place_mtl_in_obj(obj_file, mtl_name):
         text = re.sub(r"^mtllib\s+.*$", f"mtllib {mtl_name}", text, flags=re.MULTILINE)
         with open(obj_file, "w", encoding="utf-8") as f:
             f.write(text)
-        print(f"Replaced obj's mtl path to {mtl_name}")
+        # print(f"Replaced obj's mtl path to {mtl_name}")
     else:
         print(f"Path DNE: {obj_file}")
 

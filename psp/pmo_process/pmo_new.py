@@ -34,7 +34,7 @@ def convert_pmo(pmo_file, mtl_file,
             convert_mh3_pmo(pmo, obj, second)
         elif type == b'pmo\x00' and version == b'1.0\x00':
             obj.write('mtllib {}\n'.format(mtl_file))
-            convert_mh2_pmo(pmo, obj, second, verbose, enforce_ge_verbose)
+            convert_mh2_pmo(pmo, obj, mtl_file, second, verbose, enforce_ge_verbose)
         else:
             if second:
                 second.close()

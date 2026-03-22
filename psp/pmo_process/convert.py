@@ -1,6 +1,11 @@
+import os
 import struct
 from logger import Logger, LogStyle
 from base import run_ge, create_mesh
+
+import sys
+sys.path.append(os.path.abspath("../organize_process"))
+from replace_mtl import place_mtl_in_obj  # type: ignore
 
 def log_seek(pmo, target, label, indent=0):
     before = pmo.tell()
@@ -170,10 +175,9 @@ def read_vertex_group(pmo, offset, extra_indent: int):
 # MAIN FUNCTION
 # =========================
 
-def convert_mh2_pmo(pmo, obj, second=None, verbose=False, enforce_ge_verbose=False):
+def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_verbose=False):
     Logger.enable = verbose
     # Logger.set_log_file("log.txt")
-    offsets = {'v': 1, 'vt': 1, 'vn': 1}
 
     Logger.debug(f"Current Pos: {pmo.tell():08X}")
 
@@ -183,33 +187,58 @@ def convert_mh2_pmo(pmo, obj, second=None, verbose=False, enforce_ge_verbose=Fal
     # Avoid long debug info
     has_dbg_ge_once = False
 
-    for i in range(1):
-        Logger.highlight(f"I-Loop ({i+1} / {pmo_header[5]})", 0, color=LogStyle.BRIGHT_MAGENTA)
+    dirname = os.path.dirname(obj.name)
+    basename = os.path.basename(obj.name)
+    count = 0
+    print("start")
 
-        mesh = []
-        obj.write(f'g mesh{i:02d}\n')
-
-        Logger.highlight("Mesh Header: ", indent=1, color=LogStyle.GREEN)
-        mesh_header = read_mesh_header(pmo, pmo_header[7] + i * 0x20, 1)
-        
-        j_len = 7000
-        if j_len == 0:
-            Logger.debug("Continue: j loop length is 0!", indent=1)
+    for i in range(pmo_header[6]):
+        if i >= 3:
             continue
+        Logger.highlight(f"I-Loop ({i+1} / {pmo_header[5]})", 0, color=LogStyle.BRIGHT_MAGENTA)
+        mesh = []
+        Logger.highlight("Mesh Header: ", indent=1, color=LogStyle.GREEN)
+        mesh_header = read_mesh_header(pmo, pmo_header[7], 1)
+
+        j_len = 15
+        if i == 0:
+            j_len = 15
+        elif i == 1:
+            j_len = 30
+        elif i == 2:
+            j_len = 3
+        
+        
+        # if j_len == 0:
+        #     Logger.debug("Continue: j loop length is 0!", indent=1)
+        #     continue
 
         for j in range(j_len):
             Logger.highlight(f"J-Loop ({j+1} / {j_len}) in i:{i+1}", 1, color=LogStyle.RED)
 
             Logger.highlight("Vertex Group Header: ", indent=2, color=LogStyle.GREEN)
 
-            vg_offset = pmo_header[8] + ((mesh_header[7] + j) * 0x10)
+            vg_offset = pmo_header[8] + ((mesh_header[7] + count) * 0x10)
             Logger.debug(f"{pmo_header[8]:08X} + (({mesh_header[7]:08X} + {j}) * 0x10)", 2)
             vertex_group_header = read_vertex_group(pmo, vg_offset, 2)
 
             Logger.highlight("Vertex Data (PMO  ): ", indent=2, color=LogStyle.GREEN)
+
+            print(f"{pmo_header[11]:08X}")
             log_seek(pmo, pmo_header[11] + (mesh_header[5] + vertex_group_header[0]) * 16, "vertex_data", 2)
 
-            material = struct.unpack('4I', pmo.read(16))[2]
+            mat_read_raw = pmo.read(16)
+            # print(' '.join(f'{b:02X}' for b in mat_read_raw), f"{pmo.tell():08X}")
+            mat_read = struct.unpack('4I', mat_read_raw)
+            # material = mat_read[2]
+
+            material = 3
+            if i == 0:
+                material = 3
+            elif i == 1:
+                material = 2
+            elif i == 2:
+                material = 1
 
             ge_extra_indent = 0 if enforce_ge_verbose else 3
             ge_verbose = verbose or enforce_ge_verbose
@@ -232,26 +261,34 @@ def convert_mh2_pmo(pmo, obj, second=None, verbose=False, enforce_ge_verbose=Fal
                 Logger.highlight(f" Offset2: {test_offset}", indent=2, color=LogStyle.YELLOW if offset != test_offset else LogStyle.BRIGHT_BLACK)
 
                 Logger.highlight("Vertex Data (GE   ): ", indent=2, color=LogStyle.GREEN)
-                
-                if offset > pmo_header[0]:
-                    break
+
+                # if offset > pmo_header[0]:
+                #     break
 
                 log_seek(pmo, offset, "vertex_data", 2)
-
                 try:
                     result = run_ge(pmo, scale, ge_verbose, ge_extra_indent)
                     has_dbg_ge_once = True
                     Logger.enable = verbose
-                    if not result:
-                        Logger.warn(f"Empty GE at mesh {i}, group {j}", 1)
-                        break
 
+                    if not result:
+                        Logger.warn(f"Empty GE at mesh {i}, group {count}", 1)
+                        break
+                    
                     mesh.append(result + (material,))
                 except Exception as e:
-                    Logger.warn(f"Stopping mesh {i}, group {j}: {e}", 1)
+                    Logger.warn(f"Stopping mesh {i}, group {count}: {e}", 1)
                     break
+            count += 1
 
-        create_mesh(obj, offsets, mesh)
+        if mesh:
+            offsets = {'v': 1, 'vt': 1, 'vn': 1}
+            new_save_path = os.path.join(dirname, basename.replace(".obj", f"-{i}.obj"))
+            with open(new_save_path, 'w') as o:
+                o.write('mtllib {}\n'.format(mtl_file))
+                o.write(f'g mesh{i:02d}\n')
+                create_mesh(o, offsets, mesh)
+            place_mtl_in_obj(new_save_path, "material.mtl")
 
 def convert_mh3_pmo(pmo, obj, second=None):
     offsets = {'v': 1, 'vt': 1, 'vn': 1}
