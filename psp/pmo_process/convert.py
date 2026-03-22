@@ -200,18 +200,21 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
         Logger.highlight("Mesh Header: ", indent=1, color=LogStyle.GREEN)
         mesh_header = read_mesh_header(pmo, pmo_header[7], 1)
 
-        j_len = 15
+        j_len = 25
         if i == 0:
             j_len = 15
         elif i == 1:
-            j_len = 30
+            j_len = 7
         elif i == 2:
+            j_len = 23
+        elif i == 3:
             j_len = 3
-        
-        
-        # if j_len == 0:
-        #     Logger.debug("Continue: j loop length is 0!", indent=1)
-        #     continue
+        elif i == 4:
+            j_len = 17
+        elif i == 5:
+            j_len = 22
+        elif i == 6:
+            j_len = 120
 
         for j in range(j_len):
             Logger.highlight(f"J-Loop ({j+1} / {j_len}) in i:{i+1}", 1, color=LogStyle.RED)
@@ -224,21 +227,23 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
 
             Logger.highlight("Vertex Data (PMO  ): ", indent=2, color=LogStyle.GREEN)
 
-            print(f"{pmo_header[11]:08X}")
             log_seek(pmo, pmo_header[11] + (mesh_header[5] + vertex_group_header[0]) * 16, "vertex_data", 2)
-
-            mat_read_raw = pmo.read(16)
-            # print(' '.join(f'{b:02X}' for b in mat_read_raw), f"{pmo.tell():08X}")
-            mat_read = struct.unpack('4I', mat_read_raw)
-            # material = mat_read[2]
 
             material = 3
             if i == 0:
                 material = 3
             elif i == 1:
-                material = 2
-            elif i == 2:
                 material = 1
+            elif i == 2:
+                material = 2
+            elif i == 3:
+                material = 1
+            elif i == 4:
+                material = 3
+            elif i == 5:
+                material = 1
+            elif i == 6:
+                material = 0
 
             ge_extra_indent = 0 if enforce_ge_verbose else 3
             ge_verbose = verbose or enforce_ge_verbose
