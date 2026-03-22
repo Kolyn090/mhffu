@@ -23,7 +23,172 @@ def log_seek(pmo, target, indent=0):
         indent
     )
 
-def run_ge(pmo, scale, verbose=False, extra_indent=0):
+def run_ge(pmo, scale, material=0, verbose=False, extra_indent=0):
+    Logger.enable = verbose
+    file_address = pmo.tell()
+
+    pmo.seek(0, 2)
+    size = pmo.tell()
+    pmo.seek(file_address)
+
+    if file_address + 4 > size:
+        raise ValueError(f"BAD READ: {file_address:08X} + 4 > {size:08X}")
+    
+    Logger.highlight(f"=== GE START @ {file_address:08X} ===", color=LogStyle.RED, indent=extra_indent)
+    
+    index_offset = 0
+    vertices = []
+    faces = []
+    vertex_address = None
+    index_address = None
+    vertex_format = None
+    position_trans = None
+    normal_trans = None
+    color_trans = None
+    texture_trans = None
+    weight_trans = None
+    index_format = None
+    face_order = None
+
+    while True:
+        command = array.array('I', pmo.read(4))[0]
+        command_type = command >> 24
+
+        if command_type == 0x00:
+            pass
+
+        elif command_type == 0x01:
+            if vertex_address is not None:
+                index_offset = len(vertices)
+            vertex_address = file_address + (command & 0xffffff)
+
+        elif command_type == 0x02:
+            index_address = file_address + (command & 0xffffff)
+
+        elif command_type == 0x04:
+            primative_type = (command >> 16) & 7
+            index_count = command & 0xffff
+
+            command_address = pmo.tell()
+            indices = range(len(vertices) - index_offset, len(vertices) + index_count - index_offset)
+
+            if index_format is not None:
+                indices = array.array(index_format)
+                log_seek(pmo, index_address, 2+extra_indent)
+                indices.fromfile(pmo, index_count)
+                index_address = pmo.tell()
+
+            vertex_size = struct.calcsize(vertex_format)
+
+            for i in range(len(indices)):
+                idx = indices[i]
+                log_seek(pmo, vertex_address + vertex_size * idx, 3+extra_indent)
+
+                raw_bytes = pmo.read(vertex_size)
+                raw_vertex = list(struct.unpack(vertex_format, raw_bytes))
+
+                vertex = {}
+                vertex['z'] = (raw_vertex.pop() / position_trans) * scale[2]
+                vertex['y'] = (raw_vertex.pop() / position_trans) * scale[1]
+                vertex['x'] = (raw_vertex.pop() / position_trans) * scale[0]
+
+                if normal_trans is not None:
+                    vertex['k'] = raw_vertex.pop() / normal_trans
+                    vertex['j'] = raw_vertex.pop() / normal_trans
+                    vertex['i'] = raw_vertex.pop() / normal_trans
+
+                if color_trans is not None:
+                    raw_vertex.pop()
+
+                if texture_trans is not None:
+                    vertex['v'] = raw_vertex.pop() / texture_trans
+                    vertex['u'] = raw_vertex.pop() / texture_trans
+
+                if len(vertices) <= (idx + index_offset):
+                    vertices.extend([None] * (idx + index_offset + 1 - len(vertices)))
+
+                vertices[idx + index_offset] = vertex
+            
+            log_seek(pmo, command_address, 1+extra_indent)
+
+            if primative_type == 3:
+                for j in range(0, index_count, 3):
+                    v0 = indices[j] + index_offset
+                    v1 = indices[j+1] + index_offset
+                    v2 = indices[j+2] + index_offset
+
+                    faces.append({'v1': v0, 'v2': v1, 'v3': v2, 'mat': material})
+
+            elif primative_type == 4:
+                for j in range(index_count - 2):
+                    if (j + face_order) % 2:
+                        v0 = indices[j+1] + index_offset
+                        v1 = indices[j] + index_offset
+                        v2 = indices[j+2] + index_offset
+                    else:
+                        v0 = indices[j] + index_offset
+                        v1 = indices[j+1] + index_offset
+                        v2 = indices[j+2] + index_offset
+
+                    faces.append({'v1': v0, 'v2': v1, 'v3': v2, 'mat': material})
+
+        elif command_type == 0x0b:
+            break
+
+        elif command_type == 0x10:
+            pass
+
+        elif command_type == 0x12:
+            vertex_format = ''
+
+            weight = (command >> 9) & 3
+            if weight != 0:
+                count = ((command >> 14) & 7) + 1
+                vertex_format += str(count) + (None, 'B', 'H', 'f')[weight]
+                weight_trans = (None, 0x80, 0x8000, 1)[weight]
+
+            bypass_transform = (command >> 23) & 1
+
+            texture = command & 3
+            if texture != 0:
+                vertex_format += (None, '2B', '2H', '2f')[texture]
+                texture_trans = 1 if bypass_transform else (None, 0x80, 0x8000, 1)[texture]
+
+            color = (command >> 2) & 7
+            if color != 0:
+                vertex_format += (None, None, None, None, 'H', 'H', 'H', 'I')[color]
+
+            normal = (command >> 5) & 3
+            if normal != 0:
+                vertex_format += (None, '3b', '3h', '3f')[normal]
+                normal_trans = 1 if bypass_transform else (None, 0x7f, 0x7fff, 1)[normal]
+
+            position = (command >> 7) & 3
+            if position != 0:
+                if bypass_transform:
+                    vertex_format += (None, '2bB', '2hH', '3f')[position]
+                    position_trans = 1
+                else:
+                    vertex_format += (None, '3b', '3h', '3f')[position]
+                    position_trans = (None, 0x7f, 0x7fff, 1)[position]
+
+            index_format = (None, 'B', 'H', 'I')[(command >> 11) & 3]
+
+        elif command_type == 0x13:
+            pass
+
+        elif command_type == 0x14:
+            pass
+
+        elif command_type == 0x9b:
+            face_order = command & 1
+
+        else:
+            raise ValueError(f'Unknown GE command: 0x{command_type:02X}')
+        
+    return vertices, faces
+
+def run_ge2(pmo, scale, verbose=False, extra_indent=0):
     Logger.enable = verbose
     file_address = pmo.tell()
 
@@ -190,7 +355,6 @@ def run_ge(pmo, scale, verbose=False, extra_indent=0):
             
             # # TODO: change back
             # return
-
         # RET - Return from Call
         elif command_type == 0x0b:
             Logger.info("RET - Return from Call: 0x0b", 1+extra_indent)
@@ -272,7 +436,7 @@ def run_ge(pmo, scale, verbose=False, extra_indent=0):
     return vertices, faces
 
 
-def create_mesh(obj, offsets, mesh):
+def create_mesh2(obj, offsets, mesh):
     for i in range(len(mesh)):
         v_old = offsets['v']
         vt_old = offsets['vt']
@@ -309,4 +473,68 @@ def create_mesh(obj, offsets, mesh):
                 obj.write('//')
             if mesh[i][0][face['v3']].get('i') is not None:
                 obj.write('{:d}'.format(face['v3'] + vn_old))
+            obj.write('\n')
+
+def create_mesh(obj, offsets, mesh):
+    for i in range(len(mesh)):
+        v_old = offsets['v']
+        vt_old = offsets['vt']
+        vn_old = offsets['vn']
+
+        vertices, faces = mesh[i]
+
+        # write vertices
+        for vertex in vertices:
+            obj.write('v {x:f} {y:f} {z:f}\n'.format(**vertex))
+            offsets['v'] += 1
+
+            if vertex.get('u') is not None:
+                obj.write('vt {u:f} {v:f}\n'.format(**vertex))
+                offsets['vt'] += 1
+
+            if vertex.get('i') is not None:
+                obj.write('vn {i:f} {j:f} {k:f}\n'.format(**vertex))
+                offsets['vn'] += 1
+
+        # material per face
+        current_mat = None
+
+        for face in faces:
+            # ✅ safety: skip broken faces
+            if face['v1'] >= len(vertices) or face['v2'] >= len(vertices) or face['v3'] >= len(vertices):
+                continue
+
+            mat = face.get('mat', 0)
+
+            if mat != current_mat:
+                current_mat = mat
+                obj.write(f'usemtl texture{mat:02d}\n')
+
+            # --- v1 ---
+            obj.write(f'f {face["v1"] + v_old}')
+            if vertices[face['v1']].get('u') is not None:
+                obj.write(f'/{face["v1"] + vt_old}/')
+            else:
+                obj.write('//')
+            if vertices[face['v1']].get('i') is not None:
+                obj.write(f'{face["v1"] + vn_old}')
+
+            # --- v2 ---
+            obj.write(f' {face["v2"] + v_old}')
+            if vertices[face['v2']].get('u') is not None:
+                obj.write(f'/{face["v2"] + vt_old}/')
+            else:
+                obj.write('//')
+            if vertices[face['v2']].get('i') is not None:
+                obj.write(f'{face["v2"] + vn_old}')
+
+            # --- v3 ---
+            obj.write(f' {face["v3"] + v_old}')
+            if vertices[face['v3']].get('u') is not None:
+                obj.write(f'/{face["v3"] + vt_old}/')
+            else:
+                obj.write('//')
+            if vertices[face['v3']].get('i') is not None:
+                obj.write(f'{face["v3"] + vn_old}')
+
             obj.write('\n')

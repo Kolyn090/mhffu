@@ -175,7 +175,7 @@ def read_vertex_group(pmo, offset, extra_indent: int):
 # MAIN FUNCTION
 # =========================
 
-def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_verbose=False):
+def convert_mh2_pmo2(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_verbose=False):
     Logger.enable = verbose
     # Logger.set_log_file("log.txt")
 
@@ -250,7 +250,6 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
 
             if has_dbg_ge_once:
                 ge_verbose = False
-            ge_verbose = False
 
             if second:
                 second.seek(vertex_group_header[3])
@@ -294,6 +293,128 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
                 o.write(f'g mesh{i:02d}\n')
                 create_mesh(o, offsets, mesh)
             place_mtl_in_obj(new_save_path, "material.mtl")
+
+def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_verbose=False):
+    Logger.enable = verbose
+
+    Logger.debug(f"Current Pos: {pmo.tell():08X}")
+
+    pmo_header = read_pmo_header(pmo, 0)
+    scale = pmo_header[2:5]
+
+    has_dbg_ge_once = False
+
+    dirname = os.path.dirname(obj.name)
+    basename = os.path.basename(obj.name)
+    count = 0
+    print("start")
+
+    # 🔥 find real material table once
+    def find_material_table(pmo):
+        pmo.seek(0)
+        data = pmo.read()
+        pattern = b'\xFF\xFF\xFF\xFF\x7F\x7F\x7F\x00'
+        offset = data.find(pattern)
+        if offset == -1:
+            raise ValueError("Material table not found")
+        return offset
+
+    mat_base = find_material_table(pmo)
+
+    for i in range(pmo_header[6]):
+        if i >= 7:
+            continue
+
+        Logger.highlight(f"I-Loop ({i+1} / {pmo_header[5]})", 0, color=LogStyle.BRIGHT_MAGENTA)
+
+        mesh = []
+
+        Logger.highlight("Mesh Header: ", indent=1, color=LogStyle.GREEN)
+        mesh_header = read_mesh_header(pmo, pmo_header[7], 1)
+
+        j_len = 25
+        if i == 0:
+            j_len = 15
+        elif i == 1:
+            j_len = 7
+        elif i == 2:
+            j_len = 23
+        elif i == 3:
+            j_len = 3
+        elif i == 4:
+            j_len = 17
+        elif i == 5:
+            j_len = 22
+        elif i == 6:
+            j_len = 120
+
+        for j in range(j_len):
+            Logger.highlight(f"J-Loop ({j+1} / {j_len}) in i:{i+1}", 1, color=LogStyle.RED)
+
+            vg_offset = pmo_header[8] + ((mesh_header[7] + count) * 0x10)
+            vertex_group_header = read_vertex_group(pmo, vg_offset, 2)
+
+            log_seek(pmo, pmo_header[11] + (mesh_header[5] + vertex_group_header[0]) * 16, "vertex_data", 2)
+
+            # ✅ correct material read (16-byte struct, 4-byte material)
+            mat_offset = find_material_table(pmo)
+
+            pmo.seek(mat_offset)
+            entry = pmo.read(16)
+
+            material = struct.unpack('<I', entry[8:12])[0]
+
+            ge_extra_indent = 0 if enforce_ge_verbose else 3
+            ge_verbose = verbose or enforce_ge_verbose
+
+            if has_dbg_ge_once:
+                ge_verbose = False
+
+            if second:
+                second.seek(vertex_group_header[3])
+                vertices, faces = run_ge(second, scale, material, ge_verbose, ge_extra_indent)
+                mesh.append((vertices, faces))
+                has_dbg_ge_once = True
+                Logger.enable = verbose
+
+            else:
+                raw = vertex_group_header[3]
+                offset = pmo_header[12] + raw
+
+                log_seek(pmo, offset, "vertex_data", 2)
+
+                try:
+                    vertices, faces = run_ge(
+                        pmo,
+                        scale,
+                        material,
+                        ge_verbose,
+                        ge_extra_indent
+                    )
+
+                    if not vertices or not faces:
+                        Logger.warn(f"Empty GE at mesh {i}, group {j}", 1)
+                        break
+
+                    mesh.append((vertices, faces))
+
+                except Exception as e:
+                    Logger.warn(f"Stopping mesh {i}, group {j}: {e}", 1)
+                    break
+
+            count += 1
+
+        if mesh:
+            offsets = {'v': 1, 'vt': 1, 'vn': 1}
+            new_save_path = os.path.join(dirname, basename.replace(".obj", f"-{i}.obj"))
+
+            with open(new_save_path, 'w') as o:
+                o.write('mtllib {}\n'.format(mtl_file))
+                o.write(f'g mesh{i:02d}\n')
+                create_mesh(o, offsets, mesh)
+
+            place_mtl_in_obj(new_save_path, "material.mtl")
+
 
 def convert_mh3_pmo(pmo, obj, second=None):
     offsets = {'v': 1, 'vt': 1, 'vn': 1}
