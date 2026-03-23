@@ -273,6 +273,21 @@ def convert_mh2_pmo2(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_
                 create_mesh(o, offsets, mesh)
             place_mtl_in_obj(new_save_path, "material.mtl")
 
+def determine_i_len(pmo, pmo_header):
+    vertex_raw_bytes = int((pmo_header[9] - pmo_header[8]))
+    pmo.seek(pmo_header[8])
+    data = pmo.read(vertex_raw_bytes)
+    width = 16
+    count = 0
+    last = -10000
+    for i in range(0, len(data), width):
+        chunk = data[i:i+width]
+        if chunk:  # avoid empty
+            if last != chunk[0]:
+                count += 1
+                last = chunk[0]
+    return count
+
 def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_verbose=False):
     Logger.enable = verbose
     # Logger.set_log_file("log.txt")
@@ -289,12 +304,15 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
     basename = os.path.basename(obj.name)
     count = 0
 
-    for i in range(pmo_header[6]):
-        Logger.highlight(f"I-Loop ({i+1} / {pmo_header[5]})", 0, color=LogStyle.BRIGHT_MAGENTA)
+    # print((pmo_header[9] - pmo_header[8]) / 16)
+    # print(pmo_header[6])
+
+    mesh_header = read_mesh_header(pmo, pmo_header[7], 1)
+    for i in range(determine_i_len(pmo, pmo_header)):
+        Logger.highlight(f"I-Loop ({i+1} / {pmo_header[6]})", 0, color=LogStyle.BRIGHT_MAGENTA)
         mesh = []
 
         Logger.highlight("Mesh Header: ", indent=1, color=LogStyle.GREEN)
-        mesh_header = read_mesh_header(pmo, pmo_header[7], 1)
 
         vtx_idx = []
         while True:
@@ -302,16 +320,27 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
             vg_offset = pmo_header[8] + ((mesh_header[7] + count) * 0x10)
             vertex_group_header = read_vertex_group(pmo, vg_offset, 2)
 
+            pmo.seek(pmo_header[9])
+            indices_num = 16*int(pmo_header[6]/16+1)  # Some of them are trailing zeros, don't count
+            
+            mat_indices = struct.unpack(f"{indices_num}B", pmo.read(indices_num))
+            # print(mat_indices)
+            mat_index = mat_indices[vertex_group_header[0]]
+
+            pmo.seek(pmo_header[11] + (mat_index) * 16)
+            material = struct.unpack('4I', pmo.read(16))[2]
+
             new_val = vertex_group_header[0]
-            log_seek(pmo, pmo_header[11] + (mesh_header[5] + vertex_group_header[0]) * 16, "vertex_data", 2)
+            # log_seek(pmo, pmo_header[11] + (mesh_header[5] + vertex_group_header[0]) * 16, "vertex_data", 2)
 
             ge_extra_indent = 0 if enforce_ge_verbose else 3
             ge_verbose = verbose or enforce_ge_verbose
 
             if has_dbg_ge_once:
                 ge_verbose = False
-
-            material = 3
+            ge_verbose = False
+            
+            # print(vertex_group_header[0], mat_index, material)
 
             if len(vtx_idx) == 0 or new_val == vtx_idx[-1]:
                 vtx_idx.append(new_val)
@@ -361,7 +390,10 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
                 o.write(f'g mesh{i:02d}\n')
                 create_mesh(o, offsets, mesh)
             place_mtl_in_obj(new_save_path, "material.mtl")
-
+        else:
+            print(f"Failed to process mesh for index {i}")
+        print(i, vtx_idx, len(vtx_idx))
+        print(count)
 
 def convert_mh3_pmo(pmo, obj, second=None):
     offsets = {'v': 1, 'vt': 1, 'vn': 1}
