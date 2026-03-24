@@ -136,3 +136,15 @@ savefolder="../export/model/weapon/"
 echo "Process $pmo_folder & $tmh_folder -> $savefolder"
 python3 batch_organize.py "$pmo_folder" "$tmh_folder" "$savefolder" "0000" "0002"
 
+echo "Copy female player skin"
+f_skin_folder="../export/tmh/player/f/skin/"
+output_folder="../export/model/player/f/skin/"
+mkdir -p "$output_folder/texture"
+cp -r "$f_skin_folder"/. "$output_folder/texture"
+
+
+echo "Copy male player skin"
+m_skin_folder="../export/tmh/player/m/skin/"
+output_folder="../export/model/player/m/skin/"
+mkdir -p "$output_folder/texture"
+cp -r "$m_skin_folder"/. "$output_folder/texture"

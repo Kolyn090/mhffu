@@ -49,8 +49,8 @@ def organize_obj_mtl(ofp, tfp, new_save_path, pmo_code, tmh_code):
                 f.write(text)
 
             # Copy texture folder
-            target_mtl_folder = os.path.join(tfp, name.replace(f"-{pmo_code}", f"-{tmh_code}"))
-            target_mtl_folder = target_mtl_folder.replace(f"-{item.replace(".obj", "")}", "")
+            target_mtl_folder = os.path.join(os.path.dirname(tfp), k+f"-{tmh_code}")
+
             texture_dest = os.path.join(save_folder_path, "texture")
 
             if os.path.exists(target_mtl_folder):
