@@ -27,14 +27,16 @@ def convert_pmo(pmo_file, mtl_file,
     second = None
     if second_file:
         second = open(second_file, 'rb')
-    with open(pmo_file, 'rb') as pmo, open(obj_file, 'w') as obj:
+    with open(pmo_file, 'rb') as pmo:
         type, version = struct.unpack('4s4s', pmo.read(8))
         if type == b'pmo\x00' and version == b'102\x00':
-            obj.write('mtllib {}\n'.format(mtl_file))
-            convert_mh3_pmo(pmo, obj, second)
+            with open(obj_file, 'w') as obj:
+                obj.write('mtllib {}\n'.format(mtl_file))
+                convert_mh3_pmo(pmo, obj, second)
         elif type == b'pmo\x00' and version == b'1.0\x00':
-            obj.write('mtllib {}\n'.format(mtl_file))
-            convert_mh2_pmo(pmo, obj, mtl_file, second, verbose, enforce_ge_verbose)
+            dirname = os.path.dirname(obj_file)
+            basename = os.path.basename(obj_file)
+            convert_mh2_pmo(pmo, mtl_file, dirname, basename, second, verbose, enforce_ge_verbose)
         else:
             if second:
                 second.close()

@@ -117,7 +117,7 @@ def debug_vertex_group_header(vertex_group_header, extra_indent):
     Logger.highlight(f" [5] No idea               = {vertex_group_header[5]} (unused)", extra_indent, color=LogStyle.BRIGHT_BLACK)
 
 # =========================
-# CORE LOGIC (UNCHANGED)
+# CORE LOGIC
 # =========================
 
 def read_pmo_header(pmo, extra_indent: int):
@@ -154,7 +154,7 @@ def determine_i_len(pmo, pmo_header):
                 last = chunk[0]
     return count
 
-def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_verbose=False):
+def convert_mh2_pmo(pmo, mtl_file, dirname, basename, second=None, verbose=False, enforce_ge_verbose=False):
     Logger.enable = verbose
     # Logger.set_log_file("log.txt")
 
@@ -166,18 +166,17 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
     # Avoid long debug info
     has_dbg_ge_once = False
 
-    dirname = os.path.dirname(obj.name)
-    basename = os.path.basename(obj.name)
     count = 0
-
     number_of_mesh = determine_i_len(pmo, pmo_header)
 
+    # Each i loop should produce a mesh (part of the model)
     for i in range(number_of_mesh):
         Logger.highlight(f"I-Loop ({i+1} / {pmo_header[6]})", 0, color=LogStyle.BRIGHT_MAGENTA)
         mesh = []
 
         Logger.highlight("Mesh Header: ", indent=1, color=LogStyle.GREEN)
 
+        # Merge GE runs according to the flag in vertex group header[0]
         vtx_idx = []
         while True:
             Logger.highlight("Vertex Group Header: ", indent=2, color=LogStyle.GREEN)
