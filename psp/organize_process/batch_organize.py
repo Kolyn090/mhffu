@@ -8,62 +8,78 @@ def organize_obj_mtl(ofp, tfp, new_save_path, pmo_code, tmh_code):
     folder = Path(ofp)
     obj_files = list(folder.glob("*.obj"))
 
+    dirname = None
+
+    d = {}
     for obj_file in obj_files:
-        # print(obj_file)
+        if dirname is None:
+            dirname = os.path.dirname(obj_file)
+        
         basename = os.path.basename(obj_file)
         if pmo_code not in basename:
             continue
-        name = basename.replace(".obj", "")
+        k, v = obj_file.name.split(f"-{pmo_code}-")
+        if k not in d:
+            d[k] = []
+        d[k].append(v)
 
-        save_folder_path = os.path.join(new_save_path, name)
-        save_folder_path = os.path.join(save_folder_path, tmh_code)
-        os.makedirs(save_folder_path, exist_ok=True)
+    if dirname is None:
+        dirname = '/'
 
-        # Copy OBJ
-        new_obj_path = os.path.join(save_folder_path, basename)
-        # print(new_obj_path)
-        shutil.copy(obj_file, new_obj_path)
+    for k, v in d.items():
+        for item in v:
+            name = f"{k}-{pmo_code}-{item.replace(".obj", "")}"
+            save_folder_path = os.path.join(new_save_path, k)
+            save_folder_path = os.path.join(save_folder_path, tmh_code)
+            os.makedirs(save_folder_path, exist_ok=True)
 
-        # Fix mtllib
-        with open(new_obj_path, "r", encoding="utf-8", errors="ignore") as f:
-            text = f.read()
+            # Copy OBJ
+            new_obj_path = os.path.join(save_folder_path, name + ".obj")
+            print(new_obj_path)
+            # print(new_obj_path)
+            shutil.copy(os.path.join(dirname, name + ".obj"), new_obj_path)
 
-        text = re.sub(r"^mtllib\s+.*$", "mtllib material.mtl", text, flags=re.MULTILINE)
+            # Fix mtllib
+            with open(new_obj_path, "r", encoding="utf-8", errors="ignore") as f:
+                text = f.read()
 
-        with open(new_obj_path, "w", encoding="utf-8") as f:
-            f.write(text)
+            text = re.sub(r"^mtllib\s+.*$", "mtllib material.mtl", text, flags=re.MULTILINE)
 
-        # Copy texture folder
-        target_mtl_folder = os.path.join(tfp, name.replace(f"-{pmo_code}", f"-{tmh_code}"))
-        texture_dest = os.path.join(save_folder_path, "texture")
+            with open(new_obj_path, "w", encoding="utf-8") as f:
+                f.write(text)
 
-        if os.path.exists(target_mtl_folder):
-            shutil.copytree(target_mtl_folder, texture_dest, dirs_exist_ok=True)
+            # Copy texture folder
+            target_mtl_folder = os.path.join(tfp, name.replace(f"-{pmo_code}", f"-{tmh_code}"))
+            target_mtl_folder = target_mtl_folder.replace(f"-{item.replace(".obj", "")}", "")
+            texture_dest = os.path.join(save_folder_path, "texture")
 
-            # Move .mtl OUT of texture folder
-            for file in os.listdir(texture_dest):
-                if file.endswith(".mtl"):
-                    src_mtl = os.path.join(texture_dest, file)
-                    dst_mtl = os.path.join(save_folder_path, "material.mtl")
+            if os.path.exists(target_mtl_folder):
+                shutil.copytree(target_mtl_folder, texture_dest, dirs_exist_ok=True)
 
-                    shutil.move(src_mtl, dst_mtl)
-                    break  # assume only one .mtl
+                # Move .mtl OUT of texture folder
+                for file in os.listdir(texture_dest):
+                    if file.endswith(".mtl"):
+                        src_mtl = os.path.join(texture_dest, file)
+                        dst_mtl = os.path.join(save_folder_path, "material.mtl")
 
-            # Fix texture paths inside .mtl
-            mtl_path = os.path.join(save_folder_path, "material.mtl")
-            if os.path.exists(mtl_path):
-                with open(mtl_path, "r", encoding="utf-8", errors="ignore") as f:
-                    mtl_text = f.read()
+                        shutil.move(src_mtl, dst_mtl)
+                        break  # assume only one .mtl
 
-                # Force textures to use relative path
-                mtl_text = re.sub(
-                    r"(map_Kd\s+)(.*)",
-                    r"\1texture/\2",
-                    mtl_text
-                )
+                # Fix texture paths inside .mtl
+                mtl_path = os.path.join(save_folder_path, "material.mtl")
+                if os.path.exists(mtl_path):
+                    with open(mtl_path, "r", encoding="utf-8", errors="ignore") as f:
+                        mtl_text = f.read()
 
-                with open(mtl_path, "w", encoding="utf-8") as f:
-                    f.write(mtl_text)
+                    # Force textures to use relative path
+                    mtl_text = re.sub(
+                        r"(map_Kd\s+)(.*)",
+                        r"\1texture/\2",
+                        mtl_text
+                    )
+
+                    with open(mtl_path, "w", encoding="utf-8") as f:
+                        f.write(mtl_text)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
