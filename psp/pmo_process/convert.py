@@ -60,14 +60,14 @@ def debug_pmo_header(raw, pmo_header, extra_indent):
     Logger.debug(f"[0]  file_size                                = {unsigned_int_hex(pmo_header[0])}", extra_indent)
 
     Logger.highlight("4 Floats", extra_indent)
-    Logger.debug(f"[1] width?                                    = {pmo_header[1]} (unused)", extra_indent)
+    Logger.highlight(f" [1] width?                                    = {pmo_header[1]} (unused)", extra_indent, color=LogStyle.BRIGHT_BLACK)
     Logger.debug(f"[2] size x                                    = {pmo_header[2]}", extra_indent)
     Logger.debug(f"[3] size y                                    = {pmo_header[3]}", extra_indent)
     Logger.debug(f"[4] size z                                    = {pmo_header[4]}", extra_indent)
 
     Logger.highlight("2 Unsigned Shorts", extra_indent)
-    Logger.debug(f"[5] No idea                                   = {pmo_header[5]} (unused)", extra_indent)
-    Logger.debug(f"[6] i-loop len                                = {pmo_header[6]} (unused)", extra_indent)
+    Logger.highlight(f" [5] No idea                                   = {pmo_header[5]} (unused)", extra_indent, color=LogStyle.BRIGHT_BLACK)
+    Logger.highlight(f" [6] i-loop len                                = {pmo_header[6]} (unused)", extra_indent, color=LogStyle.BRIGHT_BLACK)
     hint1 = "↑ Note: use determine_i_len() instead"
     Logger.debug(hint1, extra_indent)
 
@@ -76,12 +76,12 @@ def debug_pmo_header(raw, pmo_header, extra_indent):
     Logger.debug(f"[8]  Vertex group header begin = {unsigned_int_hex(pmo_header[8])}", extra_indent)
     hint2 = "↑ Note: each vertex group header is 0x10, the last vertex group header should be directly above pmo_header[9]"
     Logger.debug(hint2, extra_indent)
-    Logger.debug(f"[9]  Material index map table begin (I think?) = {unsigned_int_hex(pmo_header[9])}", extra_indent)
-    Logger.debug(f"[10] Material index map table end (I think?)   = {unsigned_int_hex(pmo_header[10])}", extra_indent)
+    Logger.debug(f"[9] Material index map table begin (I think?) = {unsigned_int_hex(pmo_header[9])}", extra_indent)
+    Logger.highlight(f" [10] Material index map table end (I think?)   = {unsigned_int_hex(pmo_header[10])}", extra_indent, color=LogStyle.BRIGHT_BLACK)
     Logger.debug(f"[11] Material index table  = {unsigned_int_hex(pmo_header[11])}", extra_indent)
     Logger.debug(f"[12] Begin of the first GE region              = {unsigned_int_hex(pmo_header[12])}", extra_indent)
-    Logger.debug(f"[13] Trash?                                    = {pmo_header[13]} (unused)", extra_indent)
-    Logger.debug(f"[14] Trash?                                    = {pmo_header[14]} (unused)", extra_indent)
+    Logger.highlight(f" [13] Trash?                                    = {pmo_header[13]} (unused)", extra_indent, color=LogStyle.BRIGHT_BLACK)
+    Logger.highlight(f" [14] Trash?                                    = {pmo_header[14]} (unused)", extra_indent, color=LogStyle.BRIGHT_BLACK)
 
     Logger.newline()
 
@@ -105,16 +105,16 @@ def debug_vertex_group_header(vertex_group_header, extra_indent):
 
     Logger.highlight("2 Unsigned Chars", extra_indent)
     Logger.debug(f"[1] Vertex group flag (?) = {vertex_group_header[1]}", extra_indent)
-    Logger.debug(f"[2] No idea               = {vertex_group_header[2]} (unused)", extra_indent)
+    Logger.highlight(f" [2] No idea               = {vertex_group_header[2]} (unused)", extra_indent, color=LogStyle.BRIGHT_BLACK)
 
     Logger.highlight("1 Unsigned Short", extra_indent)
-    Logger.debug(f"[3] No idea               = {vertex_group_header[3]} (unused)", extra_indent)
+    Logger.highlight(f" [3] No idea               = {vertex_group_header[3]} (unused)", extra_indent, color=LogStyle.BRIGHT_BLACK)
 
     Logger.highlight("3 Unsigned Ints", extra_indent)
-    Logger.debug(f"[4] Vertex offset         = {vertex_group_header[4]} (unused)", extra_indent)
+    Logger.debug(f"[4] Vertex offset         = {vertex_group_header[4]}", extra_indent)
     hint1 = "↑ Note: add pmo_header[12] is the GE region"
     Logger.debug(hint1, extra_indent)
-    Logger.debug(f"[5] No idea               = {vertex_group_header[5]} (unused)", extra_indent)
+    Logger.highlight(f" [5] No idea               = {vertex_group_header[5]} (unused)", extra_indent, color=LogStyle.BRIGHT_BLACK)
 
 # =========================
 # CORE LOGIC (UNCHANGED)
@@ -215,12 +215,8 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
                     Logger.enable = verbose
                 else:
                     raw = vertex_group_header[3]
-                    Logger.debug(f"Raw (before offset): {raw}", indent=2)
                     offset = pmo_header[12] + raw
-                    test_offset = pmo_header[12] + raw
-                    Logger.debug(f"{pmo_header[12]:08X} + {raw:08X} = ", indent=2)
-                    Logger.debug(f"Offset1: {offset:08X}", indent=2)
-                    Logger.highlight(f" Offset2: {test_offset:08X}", indent=2, color=LogStyle.YELLOW if offset != test_offset else LogStyle.BRIGHT_BLACK)
+                    Logger.debug(f"Now you are in GE region: {pmo_header[12]:08X} + {raw:08X} (Vertex offset) = {offset:08X}", indent=2)
 
                     Logger.highlight("Vertex Data (GE   ): ", indent=2, color=LogStyle.GREEN)
 
