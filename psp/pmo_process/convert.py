@@ -55,8 +55,6 @@ def debug_pmo_header(raw, pmo_header, extra_indent):
         Logger.debug(f"[{7+i}] {' '.join(f'{b:02X}' for b in raw[offset:offset+4])}", extra_indent)
         offset += 4
 
-    scale = pmo_header[2:5]
-
     Logger.debug("=== PMO HEADER ===", extra_indent)
     Logger.highlight("1 Unsigned Int", extra_indent)
     Logger.debug(f"[0]  file_size                                = {unsigned_int_hex(pmo_header[0])}", extra_indent)
@@ -81,53 +79,11 @@ def debug_pmo_header(raw, pmo_header, extra_indent):
     Logger.debug(f"[9]  Material index map table begin (I think?) = {unsigned_int_hex(pmo_header[9])}", extra_indent)
     Logger.debug(f"[10] Material index map table end (I think?)   = {unsigned_int_hex(pmo_header[10])}", extra_indent)
     Logger.debug(f"[11] Material index table  = {unsigned_int_hex(pmo_header[11])}", extra_indent)
-    Logger.debug(f"[12] Begin of the first GE region              = {pmo_header[12]}", extra_indent)
+    Logger.debug(f"[12] Begin of the first GE region              = {unsigned_int_hex(pmo_header[12])}", extra_indent)
     Logger.debug(f"[13] Trash?                                    = {pmo_header[13]} (unused)", extra_indent)
     Logger.debug(f"[14] Trash?                                    = {pmo_header[14]} (unused)", extra_indent)
 
     Logger.newline()
-
-
-def debug_mesh_raw(raw_m, extra_indent):
-    Logger.debug("=== MESH HEADER (STRUCT HEX) ===", extra_indent)
-
-    offset = 0
-    for i in range(2):
-        Logger.debug(f"[{i}] {' '.join(f'{b:02X}' for b in raw_m[offset:offset+4])}", extra_indent)
-        offset += 4
-
-    for i in range(2):
-        Logger.debug(f"[{2+i}] {' '.join(f'{b:02X}' for b in raw_m[offset:offset+4])}", extra_indent)
-        offset += 4
-
-    for i in range(4):
-        Logger.debug(f"[{4+i}] {' '.join(f'{b:02X}' for b in raw_m[offset:offset+2])}", extra_indent)
-        offset += 2
-
-    for i in range(2):
-        Logger.debug(f"[{8+i}] {' '.join(f'{b:02X}' for b in raw_m[offset:offset+4])}", extra_indent)
-        offset += 4
-
-def debug_mesh_header(mesh_header, extra_indent):
-    Logger.debug("=== MESH HEADER ===", extra_indent)
-    Logger.highlight("2 Floats", extra_indent)
-    Logger.debug(f"[0]  = {mesh_header[0]}", extra_indent)
-    Logger.debug(f"[1]  = {mesh_header[1]}", extra_indent)
-
-    Logger.highlight("2 Unsigned Ints", extra_indent)
-    Logger.debug(f"[2]  = {mesh_header[2]}", extra_indent)
-    Logger.debug(f"[3]  = {mesh_header[3]}", extra_indent)
-
-    Logger.highlight("4 Unsigned Shorts", extra_indent)
-    Logger.debug(f"[4]  = {mesh_header[4]}", extra_indent)
-    Logger.debug(f"[5]  = {mesh_header[5]}", extra_indent)
-    Logger.debug(f"[6]  = {mesh_header[6]}", extra_indent)
-    Logger.debug(f"[7]  = {mesh_header[7]}", extra_indent)
-
-    Logger.highlight("2 Unsigned Ints", extra_indent)
-    Logger.debug(f"[8]  = {mesh_header[8]}", extra_indent)
-    Logger.debug(f"[9]  = {mesh_header[9]}", extra_indent)
-
 
 def debug_vertex_group_raw(raw_v, extra_indent):
     Logger.debug("=== Vertex Group HEADER (STRUCT HEX) ===", extra_indent)
@@ -169,16 +125,6 @@ def read_pmo_header(pmo, extra_indent: int):
     pmo_header = struct.unpack('I4f2H8I', raw)
     debug_pmo_header(raw, pmo_header, extra_indent)
     return pmo_header
-
-
-def read_mesh_header(pmo, offset, extra_indent: int):
-    log_seek(pmo, offset, "mesh_header", extra_indent)
-    raw = pmo.read(0x20)
-    debug_mesh_raw(raw, extra_indent)
-    mesh_header = struct.unpack('2f2I4H2I', raw)
-    debug_mesh_header(mesh_header, extra_indent)
-    return mesh_header
-
 
 def read_vertex_group(pmo, offset, extra_indent: int):
     log_seek(pmo, offset, "vertex_group_header", extra_indent)
@@ -225,7 +171,6 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
     count = 0
 
     number_of_mesh = determine_i_len(pmo, pmo_header)
-    mesh_header = read_mesh_header(pmo, pmo_header[7], 1)
 
     for i in range(number_of_mesh):
         Logger.highlight(f"I-Loop ({i+1} / {pmo_header[6]})", 0, color=LogStyle.BRIGHT_MAGENTA)
@@ -236,7 +181,7 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
         vtx_idx = []
         while True:
             Logger.highlight("Vertex Group Header: ", indent=2, color=LogStyle.GREEN)
-            vg_offset = pmo_header[8] + ((mesh_header[7] + count) * 0x10)
+            vg_offset = pmo_header[8] + (count * 0x10)
             vertex_group_header = read_vertex_group(pmo, vg_offset, 2)
 
             pmo.seek(pmo_header[9])
@@ -310,9 +255,7 @@ def convert_mh2_pmo(pmo, obj, mtl_file, second=None, verbose=False, enforce_ge_v
                 create_mesh(o, offsets, mesh)
             place_mtl_in_obj(new_save_path, "material.mtl")
         else:
-            print(f"Failed to process mesh for index {i}")
-        print(i, vtx_idx, len(vtx_idx))
-        print(count)
+            Logger.error(f"Failed to process mesh for index {i}")
 
 def convert_mh3_pmo(pmo, obj, second=None):
     offsets = {'v': 1, 'vt': 1, 'vn': 1}
