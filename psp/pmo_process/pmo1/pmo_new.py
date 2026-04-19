@@ -18,7 +18,7 @@
 import argparse
 import os
 import struct
-from psp.pmo_process.convert_finegrain import convert_mh2_pmo, convert_mh3_pmo
+from convert_finegrain import convert_mh2_pmo, convert_mh3_pmo
 
 def convert_pmo(pmo_file, mtl_file, 
                 obj_file, second_file=None, 
