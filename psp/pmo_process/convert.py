@@ -187,7 +187,11 @@ def convert_mh2_pmo(pmo, mtl_file, dirname, basename, second=None, verbose=False
             indices_num = 16*int(number_of_mesh/16+1)  # Some of them are trailing zeros, don't count
             
             mat_indices = struct.unpack(f"{indices_num}B", pmo.read(indices_num))
-            mat_index = mat_indices[vertex_group_header[0]]
+            idx = vertex_group_header[0]
+            if idx < len(mat_indices):
+                mat_index = mat_indices[idx]
+            else:
+                mat_index = 0
             pmo.seek(pmo_header[11] + (mat_index) * 16)
             # !!! This is not the correct way to get material index
             # Do this for now as I have no clue how to get it +

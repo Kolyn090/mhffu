@@ -108,6 +108,49 @@ def combine_objs_with_mtl(input_files, output_obj, output_mtl):
     print(f"Saved: {output_obj}")
     print(f"Saved: {output_mtl}")
 
+def rename_textures_and_update_mtl(folder: str):
+    folder = Path(folder)
+
+    # Find obj + mtl
+    obj_file = next(folder.glob("*.obj"), None)
+    mtl_file = next(folder.glob("*.mtl"), None)
+
+    if not obj_file or not mtl_file:
+        print("Missing .obj or .mtl file")
+        return
+
+    model_name = obj_file.stem  # e.g. "model"
+
+    texture_dir = folder / "texture"
+    if not texture_dir.exists():
+        print("Missing texture folder")
+        return
+
+    # --- Step 1: rename textures ---
+    mapping = {}  # old -> new
+
+    for tex in sorted(texture_dir.glob("material*.png")):
+        match = re.search(r"material(\d+)", tex.stem)
+        if not match:
+            continue
+
+        index = match.group(1)
+        new_name = f"{model_name}-{index}.png"
+        new_path = texture_dir / new_name
+
+        tex.rename(new_path)
+        mapping[tex.name] = new_name
+
+        # print(f"{tex.name} -> {new_name}")
+
+    # --- Step 2: update MTL ---
+    mtl_text = mtl_file.read_text()
+
+    for old, new in mapping.items():
+        mtl_text = mtl_text.replace(old, new)
+
+    mtl_file.write_text(mtl_text)
+
 def batch_obj_combine(model_folder: str, save_folder: str):
     folder = Path(model_folder)
     obj_files = list(folder.rglob("*.obj"))
@@ -118,6 +161,8 @@ def batch_obj_combine(model_folder: str, save_folder: str):
     
     for model_path in model_paths:
         new_save_path = os.path.join(save_folder, model_path.replace(model_folder, ''))
+        new_save_path = os.path.dirname(new_save_path)
+
         texture_path = os.path.join(model_path, "texture")
         folder = Path(model_path)
         obj_files = list(folder.rglob("*.obj"))
@@ -126,9 +171,9 @@ def batch_obj_combine(model_folder: str, save_folder: str):
             continue
         new_combined_obj_name = os.path.basename(obj_files[0])
         new_combined_obj_name = new_combined_obj_name.split('-')
-        new_combined_obj_name = '-'.join(new_combined_obj_name[:-1])
+        new_combined_obj_name = '-'.join(new_combined_obj_name[:-2])
         new_combined_obj_name = new_combined_obj_name + ".obj"
-        
+
         new_mtl_name = new_combined_obj_name.replace(".obj", ".mtl")
         
         new_obj_path = os.path.join(new_save_path, new_combined_obj_name)
@@ -137,9 +182,24 @@ def batch_obj_combine(model_folder: str, save_folder: str):
         os.makedirs(new_path_name, exist_ok=True)
 
         new_texture_path = os.path.join(new_path_name, "texture")
-        shutil.copytree(texture_path, new_texture_path, dirs_exist_ok=True)
 
+        shutil.copytree(texture_path, new_texture_path, dirs_exist_ok=True)
         combine_objs_with_mtl(obj_files, new_obj_path, new_mtl_path)
+        rename_textures_and_update_mtl(new_save_path)
+
+        new_save_path_root = os.path.dirname(new_save_path)
+        final_obj_path = os.path.join(new_save_path_root, new_combined_obj_name)
+        final_mtl_path = os.path.join(new_save_path_root, new_mtl_name)
+        final_texture_path = os.path.join(new_save_path_root, "texture")
+
+        if os.path.exists(new_obj_path):
+            shutil.move(new_obj_path, final_obj_path)
+        if os.path.exists(new_mtl_path):
+            shutil.move(new_mtl_path, final_mtl_path)
+        shutil.copytree(new_texture_path, final_texture_path, dirs_exist_ok=True)
+
+        if os.path.exists(new_save_path):
+            shutil.rmtree(new_save_path)
 
 def main():
     parser = argparse.ArgumentParser()

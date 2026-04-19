@@ -38,7 +38,7 @@ def batch_pmo(folder_path, new_save_path, pmo1_code, pmo2_code, mtl1_code, mtl2_
         try:
             convert_pmo(pmo_file, mtl_file, save_file_path)
         except Exception as e:
-            print(f"Failed to process {pmo_file}")
+            print(f"Failed to process {pmo_file}: {e}")
             if debug:
                 print(f"File size: {os.path.getsize(pmo_file)}")
                 import traceback

@@ -278,6 +278,8 @@ def create_mesh(obj, offsets, mesh):
         vn_old = offsets['vn']
         obj.write('usemtl texture{:02d}\n'.format(mesh[i][2]))
         for vertex in mesh[i][0]:
+            # if vertex is None:
+            #     continue
             obj.write('v {x:f} {y:f} {z:f}\n'.format(**vertex))
             offsets['v'] += 1
             if vertex.get('u') is not None:
