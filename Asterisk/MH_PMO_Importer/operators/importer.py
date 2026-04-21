@@ -168,15 +168,16 @@ class ImportPMO(Operator, ImportHelper):
     def findTexture(self,tindex):
         #print(tindex)
         #print("Starting Texture Load")
+        pattern = f"material{tindex:02d}.png"
         if str(self.texturePath) != "":
             #print(self.texturePath)
-            for p in Path(self.texturePath).glob("*%03d*.png"%tindex):
+            for p in Path(self.texturePath).glob(pattern):
                 tex = self.fetchTexture(str(p))
                 if tex is not None:
                     return tex
         else:
             #print(self.properties.filepath)
-            for p in Path(self.properties.filepath).parent.rglob("*%03d*.png"%tindex):
+            for p in Path(self.properties.filepath).parent.rglob(pattern):
                 tex = self.fetchTexture(str(p))
                 if tex is not None:
                     return tex
