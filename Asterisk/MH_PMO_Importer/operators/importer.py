@@ -4,6 +4,7 @@ Created on Wed Mar  6 14:09:29 2019
 
 @author: AsteriskAmpersand
 """
+import re
 import math
 import array
 import bpy
@@ -203,8 +204,13 @@ class ImportPMO(Operator, ImportHelper):
                 else:
                     texture = None
                 texturemap[tindex] = texture
-            matname = "PMO_Material_%03d"%(mat.index)
-            material = materialSetup(matname,texture)
+            # matname = "PMO_Material_%03d"%(mat.index)
+            # material = materialSetup(matname,texture)
+            base_name = f"material_{mat.textureID:02d}"
+            material = bpy.data.materials.get(base_name)
+            if material is None:
+                material = materialSetup(base_name, texture)
+
             for f in ["rgba","rgba2","unkn"]:
                 material[f] = mat[f]
             mapping[mat.index] = material
