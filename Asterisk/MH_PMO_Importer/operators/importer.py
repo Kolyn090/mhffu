@@ -221,10 +221,10 @@ class ImportPMO(Operator, ImportHelper):
         for v in mesh:
             if v.position:
                 # verts.append((v.position.x*scale[0],v.position.y*scale[1],v.position.z*scale[2]))
-                verts.append((v.position.x*scale[0],v.position.z*scale[2],v.position.y*scale[1]))
+                verts.append((-v.position.x*scale[0],v.position.z*scale[2],v.position.y*scale[1]))
             if v.normal:
                 # nors.append((v.normal.x,v.normal.y,v.normal.z))
-                nors.append((v.normal.x, v.normal.z, v.normal.y))
+                nors.append((-v.normal.x, v.normal.z, v.normal.y))
             if v.uv:
                 if self.flipUV:
                     uv.append((v.uv.u*uvScale[0],1 - v.uv.v*uvScale[1]))
