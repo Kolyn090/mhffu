@@ -69,6 +69,45 @@ def createTexNode(nodeTree, color, texture, name):
     node.name = name
     return node
 
+# def materialSetup(matName, texture):
+#     bpy.context.scene.render.engine = 'CYCLES'
+
+#     mat = bpy.data.materials.new(name=matName)
+#     mat.use_nodes = True
+#     mat.blend_method = 'BLEND'
+
+#     nodeTree = mat.node_tree
+#     nodes = nodeTree.nodes
+#     nodes.clear()
+
+#     # Principled BSDF
+#     bsdfNode = nodes.new(type="ShaderNodeBsdfPrincipled")
+#     bsdfNode.inputs["Roughness"].default_value = 1.0
+#     setLocation(bsdfNode, (6, 0))
+
+#     # Texture
+#     diffuseNode = createTexNode(nodeTree, "sRGB", texture, "Diffuse Texture")
+#     setLocation(diffuseNode, (0, 0))
+
+#     # Transparent + Mix
+#     transparentNode = nodes.new(type="ShaderNodeBsdfTransparent")
+#     setLocation(transparentNode, (6, 7))
+
+#     alphaMixerNode = nodes.new(type="ShaderNodeMixShader")
+#     setLocation(alphaMixerNode, (10, 1))
+
+#     # Links
+#     nodeTree.links.new(diffuseNode.outputs["Color"], bsdfNode.inputs["Base Color"])
+#     nodeTree.links.new(diffuseNode.outputs["Alpha"], alphaMixerNode.inputs["Fac"])
+#     nodeTree.links.new(transparentNode.outputs[0], alphaMixerNode.inputs[1])
+#     nodeTree.links.new(bsdfNode.outputs[0], alphaMixerNode.inputs[2])
+
+#     # Output
+#     outputNode = nodes.new(type="ShaderNodeOutputMaterial")
+#     nodeTree.links.new(alphaMixerNode.outputs[0], outputNode.inputs[0])
+
+#     return mat
+
 def materialSetup(matName, texture):
     bpy.context.scene.render.engine = 'CYCLES'
 
@@ -83,28 +122,20 @@ def materialSetup(matName, texture):
     # Principled BSDF
     bsdfNode = nodes.new(type="ShaderNodeBsdfPrincipled")
     bsdfNode.inputs["Roughness"].default_value = 1.0
-    setLocation(bsdfNode, (6, 0))
+    setLocation(bsdfNode, (4, 0))
 
     # Texture
     diffuseNode = createTexNode(nodeTree, "sRGB", texture, "Diffuse Texture")
     setLocation(diffuseNode, (0, 0))
 
-    # Transparent + Mix
-    transparentNode = nodes.new(type="ShaderNodeBsdfTransparent")
-    setLocation(transparentNode, (6, 7))
-
-    alphaMixerNode = nodes.new(type="ShaderNodeMixShader")
-    setLocation(alphaMixerNode, (10, 1))
+    # Output
+    outputNode = nodes.new(type="ShaderNodeOutputMaterial")
+    setLocation(outputNode, (8, 0))
 
     # Links
     nodeTree.links.new(diffuseNode.outputs["Color"], bsdfNode.inputs["Base Color"])
-    nodeTree.links.new(diffuseNode.outputs["Alpha"], alphaMixerNode.inputs["Fac"])
-    nodeTree.links.new(transparentNode.outputs[0], alphaMixerNode.inputs[1])
-    nodeTree.links.new(bsdfNode.outputs[0], alphaMixerNode.inputs[2])
-
-    # Output
-    outputNode = nodes.new(type="ShaderNodeOutputMaterial")
-    nodeTree.links.new(alphaMixerNode.outputs[0], outputNode.inputs[0])
+    nodeTree.links.new(diffuseNode.outputs["Alpha"], bsdfNode.inputs["Alpha"])
+    nodeTree.links.new(bsdfNode.outputs["BSDF"], outputNode.inputs["Surface"])
 
     return mat
 
