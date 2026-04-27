@@ -255,6 +255,9 @@ class ImportPMO(Operator, ImportHelper):
         uv = []
         col = []
         wts = []
+        vs = [1 - vtx.uv.v * uvScale[1] for vtx in mesh if vtx.uv]
+        min_vs = min(vs)
+        print(min_vs)
         for v in mesh:
             if v.position:
                 # verts.append((v.position.x*scale[0],v.position.y*scale[1],v.position.z*scale[2]))
@@ -263,10 +266,16 @@ class ImportPMO(Operator, ImportHelper):
                 # nors.append((v.normal.x,v.normal.y,v.normal.z))
                 nors.append((-v.normal.x, v.normal.z, v.normal.y))
             if v.uv:
-                if self.flipUV:
-                    uv.append((v.uv.u*uvScale[0],1 - v.uv.v*uvScale[1]))
-                else:
-                    uv.append((v.uv.u*uvScale[0],v.uv.v*uvScale[1]))
+                # if self.flipUV:
+                #     uv.append((v.uv.u*uvScale[0],1 - v.uv.v*uvScale[1]))
+                # else:
+                #     uv.append((v.uv.u*uvScale[0],v.uv.v*uvScale[1]))
+                uv_v = 1 - v.uv.v * uvScale[1] - min_vs
+                print(uv_v)
+                uv.append((
+                    v.uv.u * uvScale[0],
+                    uv_v
+                ))
             if v.colour:
                 col.append((v.colour.r,v.colour.g,v.colour.b,v.colour.a))
             if any(map(lambda x: x is not None, v.weight)):
@@ -398,8 +407,9 @@ class ImportPMO(Operator, ImportHelper):
             if a.type == 'VIEW_3D':
                 for s in a.spaces:
                     if s.type == 'VIEW_3D':
+                        s.clip_start = 0.5
                         s.clip_end = clippingDistance*10
-    
+
 class ImportCMO(Operator, ImportHelper):
     bl_idname = "custom_import.import_mhfu_cmo"
     bl_label = "Load MHFU CMO file (.cmo)"
