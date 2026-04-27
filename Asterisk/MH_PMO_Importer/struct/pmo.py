@@ -14,59 +14,74 @@ except:
     #from pmo_parse_orig import run_ge
     pass
 
+# Reads current file position
+# Adds padding so next section starts at 16-byte boundary
+# 0 ~ 15 bytes
 alignment = C.Struct(
         "pos" / C.Tell,
         "padding" / C.Padding((-C.this.pos)%16)
     )
 
+# Global file info
+# 56 - 64 bytes
 Header = C.Struct(
-    "pmo" / C.Int8ul[4],
-    "ver" / C.Int8ul[4],
-    "filesize" / C.Int32ul,
-    "clippingDistance" / C.Float32l,
-    "scale" / C.Float32l[3],
-    "meshCount" / C.Int16ul,
-    "materialCount" / C.Int16ul,
-    "meshHeaderOffset" / C.Int32ul,
-    "vertexGroupHeaderOffset" / C.Int32ul,
-    "materialRemapOffset" / C.Int32ul,
-    "unknI10" / C.Int32ul,
-    "materialDataOffset" / C.Int32ul,
-    "meshDataOffset" / C.Int32ul,
-    "padding" / alignment,
+    "pmo" / C.Int8ul[4],  # 4
+    "ver" / C.Int8ul[4],  # 4
+    "filesize" / C.Int32ul,  # 4
+    "clippingDistance" / C.Float32l,  # 4
+    "scale" / C.Float32l[3],  # 12
+    "meshCount" / C.Int16ul,  # 2
+    "materialCount" / C.Int16ul,  # 2 (Possibly number of triangle stripes too)
+    "meshHeaderOffset" / C.Int32ul,  # 4
+    "vertexGroupHeaderOffset" / C.Int32ul,  # 4
+    "materialRemapOffset" / C.Int32ul,  # 4
+    "unknI10" / C.Int32ul,  # 4
+    "materialDataOffset" / C.Int32ul,  # 4
+    "meshDataOffset" / C.Int32ul,  # 4
+    "padding" / alignment,  # 0 ~ 15
     )
 
+# Submesh
+# 16 bytes
 VertexGroupHeader = C.Struct(
-    "materialOffset" / C.Int8ul,
-    "boneCount" / C.Int8ul,    
-    "cumulativeBoneCount" / C.Int16ul,    
-    "meshOffset" / C.Int32ul,
-    "vertexOffset" / C.Int32ul,
-    "indexOffset" / C.Int32ul,
+    "materialOffset" / C.Int8ul,  # 1
+    "boneCount" / C.Int8ul,  # 1
+    "cumulativeBoneCount" / C.Int16ul,  # 2
+    "meshOffset" / C.Int32ul,  # 4
+    "vertexOffset" / C.Int32ul,  # 4
+    "indexOffset" / C.Int32ul,  # 4
     )
 
+# Mesh Header
+# 24 bytes
 MeshHeader = C.Struct(
-    "uvScale" / C.Float32l[2],
-    "unkn1" / C.Int8ul[8],
-    "materialCount" / C.Int16ul,
-    "cumulativeMaterialCount" / C.Int16ul,
-    "subMeshCount" / C.Int16ul,
-    "cumulativeSubmeshCount" / C.Int16ul,
-    "submeshHeaders" / C.Pointer(C.this._.header.vertexGroupHeaderOffset + C.this.cumulativeSubmeshCount*VertexGroupHeader.sizeof(),
-                                 VertexGroupHeader[C.this.subMeshCount])
+    "uvScale" / C.Float32l[2],  # 8 (Two float values)
+    "unkn1" / C.Int8ul[8],  # 8
+    "materialCount" / C.Int16ul,  # 2 (Material slots?)
+    "cumulativeMaterialCount" / C.Int16ul,  # 2
+    "subMeshCount" / C.Int16ul,  # 2
+    "cumulativeSubmeshCount" / C.Int16ul,  # 2
+    # Jump to global VertexGroupHeader table, use cumulative index to find this mesh’s submeshes 
+    # size = subMeshCount * 16 bytes
+    "submeshHeaders" / C.Pointer(C.this._.header.vertexGroupHeaderOffset + 
+                                 C.this.cumulativeSubmeshCount*VertexGroupHeader.sizeof(),
+                                 VertexGroupHeader[C.this.subMeshCount]) 
     )
 
+# Map bone indices
+# 2 bytes
 Skeleton = C.Struct(
-    "index" / C.Int8ul,
-    "bone" / C.Int8ul,
+    "index" / C.Int8ul,  # 1 byte
+    "bone" / C.Int8ul,  # 1 byte
     )
 
+# ? + 16 bytes
 MaterialContent = C.Struct(
     "index" / C.Computed(C.this._index),
-    "rgba" / C.Int8ul[4],
-    "rgba2" / C.Int8ul[4],
-    "textureID" / C.Int32sl,
-    "unkn" / C.Int8ul[4],
+    "rgba" / C.Int8ul[4],  # 4
+    "rgba2" / C.Int8ul[4],  # 4
+    "textureID" / C.Int32sl,  # 4
+    "unkn" / C.Int8ul[4],  # 4
     )
 
 PMO = C.Struct(
