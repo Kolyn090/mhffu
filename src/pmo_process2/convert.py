@@ -1,5 +1,13 @@
+"""
+Created on Thu Jan 14 22:39:43 2021
+
+@author: AsteriskAmpersand
+"""
+
+
 import construct_plugin as C
 from parser import run_ge
+from logger import Logger
 
 
 def load_pmo(pmo_path: str):
@@ -111,11 +119,38 @@ def load_pmo(pmo_path: str):
                 self.boneIds[w.index] = w.bone
         def __iter__(self):
             return iter(self.boneIds)
+        
+    def pretty_head(mesh: tuple):
+        def ff(num: float):
+            padding = " " if num >= 0 else ""
+            return f"{padding}{num:.4f}"
+
+        verts = mesh[0]
+        faces = mesh[1]
+        mats = mesh[2]
+        scale = mesh[3]
+        uv_scale = mesh[4]
+        for i in range(1):
+            v = verts[i]
+            Logger.debug(f"Vert   {i}/{len(verts)}:")
+            Logger.debug(f"Pos    {i}/{len(verts)}: {(ff(v.position.x), ff(v.position.y), ff(v.position.z))}")
+            Logger.debug(f"Normal {i}/{len(verts)}: {(ff(v.normal.x), ff(v.normal.y), ff(v.normal.z))}")
+            # (u, v) = (0.0, 0.0) → bottom-left of texture
+            # (u, v) = (1.0, 1.0) → top-right of texture
+            Logger.debug(f"UV     {i}/{len(verts)}: {(ff(v.uv.u), ff(v.uv.v))}")
+        for i in range(5):
+            Logger.debug(f"Face   {i}/{len(faces)}: {str(faces[i])}")
+        for i in range(5):
+            Logger.debug(f"Mat    {i}/{len(mats)}: {str(mats[i])}")
+        Logger.debug(f"Scale: {",".join([str(ff(s)) for s in scale])}")
+        Logger.debug(f"UV Scale: {",".join([str(ff(s)) for s in uv_scale])}")
+        Logger.newline()
 
     meshes = []
     with open(pmo_path, "rb") as file:
         pmo = PMO.parse_stream(file)
         weightData = weightParser(pmo.skeleton)
+        count = 0
         for mesh in pmo.meshHeaders:
             verts = []
             faces = []
@@ -133,5 +168,8 @@ def load_pmo(pmo_path: str):
                 faces += [tuple(map(lambda x: x + len(verts),face)) for face in f]
                 verts += v
                 materials += [mat.index for face in f]
-            meshes.append((verts,faces,materials,pmo.header.scale,mesh.uvScale))
-            
+            mesh = (verts,faces,materials,pmo.header.scale,mesh.uvScale)
+            meshes.append(mesh)
+            Logger.info(f"Mesh {count}:")
+            pretty_head(mesh)
+            count += 1
