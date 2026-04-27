@@ -1,4 +1,4 @@
-/psp/export
+/src/export
 __pycache__/
 *.pyc
 venv
