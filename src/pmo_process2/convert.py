@@ -119,32 +119,59 @@ def load_pmo(pmo_path: str):
                 self.boneIds[w.index] = w.bone
         def __iter__(self):
             return iter(self.boneIds)
-        
-    def pretty_head(mesh: tuple):
-        def ff(num: float):
-            padding = " " if num >= 0 else ""
-            return f"{padding}{num:.4f}"
+    
+    def ff(num: float):
+        padding = " " if num >= 0 else ""
+        return f"{padding}{num:.4f}"
 
+    def pretty_head(mesh: tuple):
         verts = mesh[0]
         faces = mesh[1]
         mats = mesh[2]
         scale = mesh[3]
         uv_scale = mesh[4]
-        for i in range(1):
+
+        for i in range(min(1, len(verts))):
             v = verts[i]
+            pos = v.position
+            norm = v.normal
+            uv = v.uv
             Logger.debug(f"Vert   {i}/{len(verts)}:")
-            Logger.debug(f"Pos    {i}/{len(verts)}: {(ff(v.position.x), ff(v.position.y), ff(v.position.z))}")
-            Logger.debug(f"Normal {i}/{len(verts)}: {(ff(v.normal.x), ff(v.normal.y), ff(v.normal.z))}")
+            if pos is not None:
+                Logger.debug(f"Pos    {i}/{len(verts)}: {(ff(pos.x), ff(pos.y), ff(pos.z))}")
+            else:
+                Logger.error(f"Pos    {i}/{len(verts)} is None!")
+
+            if norm is not None:
+                Logger.debug(f"Normal {i}/{len(verts)}: {(ff(norm.x), ff(norm.y), ff(norm.z))}")
+            else:
+                Logger.error(f"Normal {i}/{len(verts)} is None!")
+
             # (u, v) = (0.0, 0.0) → bottom-left of texture
             # (u, v) = (1.0, 1.0) → top-right of texture
-            Logger.debug(f"UV     {i}/{len(verts)}: {(ff(v.uv.u), ff(v.uv.v))}")
-        for i in range(5):
+            if uv is not None:
+                Logger.debug(f"UV     {i}/{len(verts)}: {(ff(uv.u), ff(uv.v))}")
+            else:
+                Logger.error(f"UV     {i}/{len(verts)} is None!")
+
+        for i in range(min(5, len(faces))):
             Logger.debug(f"Face   {i}/{len(faces)}: {str(faces[i])}")
-        for i in range(5):
+
+        for i in range(min(5, len(mats))):
             Logger.debug(f"Mat    {i}/{len(mats)}: {str(mats[i])}")
+
         Logger.debug(f"Scale: {",".join([str(ff(s)) for s in scale])}")
         Logger.debug(f"UV Scale: {",".join([str(ff(s)) for s in uv_scale])}")
         Logger.newline()
+
+    def better_uv(verts: list):
+        for i in range(len(verts)):
+            v = verts[i]
+            uv = v.uv
+            if uv is not None:
+                Logger.debug(f"UV     {i}/{len(verts)}: {(ff(uv.u), ff(uv.v))}")
+            else:
+                Logger.error(f"UV     {i}/{len(verts)} is None!")
 
     meshes = []
     with open(pmo_path, "rb") as file:
@@ -170,6 +197,8 @@ def load_pmo(pmo_path: str):
                 materials += [mat.index for face in f]
             mesh = (verts,faces,materials,pmo.header.scale,mesh.uvScale)
             meshes.append(mesh)
-            Logger.info(f"Mesh {count}:")
-            pretty_head(mesh)
+            # Logger.info(f"Mesh {count}:")
+            # pretty_head(mesh)
+            if count == 7:
+                better_uv(verts)
             count += 1
