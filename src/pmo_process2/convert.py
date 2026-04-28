@@ -197,8 +197,8 @@ def load_pmo(pmo_path: str):
                 materials += [mat.index for face in f]
             mesh = (verts,faces,materials,pmo.header.scale,mesh.uvScale)
             meshes.append(mesh)
-            # Logger.info(f"Mesh {count}:")
-            # pretty_head(mesh)
-            if count == 7:
-                better_uv(verts)
+            Logger.info(f"Mesh {count}:")
+            pretty_head(mesh)
+            # if count == 7:
+            #     better_uv(verts)
             count += 1

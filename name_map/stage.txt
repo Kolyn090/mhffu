@@ -1,4 +1,3 @@
-None
 Jungle (N) (Base)
 Jungle (N) (Area1)
 Jungle (N) (Area2)
