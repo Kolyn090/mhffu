@@ -289,16 +289,42 @@ class ImportPMO(Operator, ImportHelper):
         #print("Face Parsed")
         #return [f for f,m in faces],[m for f,m in faces]
 
-    def setMaterials(self,mesh,faceMats,masterMats):
-        for material in masterMats:
-            mesh.materials.append(masterMats[material])
+    # def setMaterials(self,mesh,faceMats,masterMats):
+    #     for material in masterMats:
+    #         mesh.materials.append(masterMats[material])
 
+    #     blenderBMesh = bmesh.new()
+    #     blenderBMesh.from_mesh(mesh)
+    #     blenderBMesh.faces.ensure_lookup_table()
+    #     for face,mat in zip(blenderBMesh.faces,faceMats):
+    #         face.material_index = mat
+    #     blenderBMesh.to_mesh(mesh)
+    #     mesh.update()
+
+    def setMaterials(self, mesh, faceMats, masterMats):
+        # Step 1: find used materials
+        used = sorted(set(faceMats))
+
+        # Step 2: build remap (global → local)
+        remap = {old: new for new, old in enumerate(used)}
+
+        # Step 3: clear existing slots
+        mesh.materials.clear()
+
+        # Step 4: add only used materials
+        for old_index in used:
+            mesh.materials.append(masterMats[old_index])
+
+        # Step 5: assign remapped indices
         blenderBMesh = bmesh.new()
         blenderBMesh.from_mesh(mesh)
         blenderBMesh.faces.ensure_lookup_table()
-        for face,mat in zip(blenderBMesh.faces,faceMats):
-            face.material_index = mat
+
+        for face, mat in zip(blenderBMesh.faces, faceMats):
+            face.material_index = remap[mat]
+
         blenderBMesh.to_mesh(mesh)
+        blenderBMesh.free()
         mesh.update()
 
     def loadMesh(self,materials,meshdata,faces,mat,scale,uvScale):
