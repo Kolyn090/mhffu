@@ -302,26 +302,30 @@ class ImportPMO(Operator, ImportHelper):
     #     mesh.update()
 
     def setMaterials(self, mesh, faceMats, masterMats):
-        # Step 1: find used materials
-        used = sorted(set(faceMats))
+        # Step 1: map global index → actual material object
+        face_material_objs = [masterMats[m] for m in faceMats]
 
-        # Step 2: build remap (global → local)
-        remap = {old: new for new, old in enumerate(used)}
+        # Step 2: build unique material list (by object identity)
+        unique_materials = []
+        mat_to_index = {}
 
-        # Step 3: clear existing slots
+        for mat in face_material_objs:
+            if mat not in mat_to_index:
+                mat_to_index[mat] = len(unique_materials)
+                unique_materials.append(mat)
+
+        # Step 3: clear and assign unique materials
         mesh.materials.clear()
+        for mat in unique_materials:
+            mesh.materials.append(mat)
 
-        # Step 4: add only used materials
-        for old_index in used:
-            mesh.materials.append(masterMats[old_index])
-
-        # Step 5: assign remapped indices
+        # Step 4: assign indices per face
         blenderBMesh = bmesh.new()
         blenderBMesh.from_mesh(mesh)
         blenderBMesh.faces.ensure_lookup_table()
 
-        for face, mat in zip(blenderBMesh.faces, faceMats):
-            face.material_index = remap[mat]
+        for face, mat_obj in zip(blenderBMesh.faces, face_material_objs):
+            face.material_index = mat_to_index[mat_obj]
 
         blenderBMesh.to_mesh(mesh)
         blenderBMesh.free()
