@@ -1,0 +1,1 @@
+py .\extract_gathering.py "E:\Games\MH2G Game\DATA.BIN" gathering.json
