@@ -1,1 +1,0 @@
-py .\extract_map_placements.py "E:\Games\MH2G Game\DATA.BIN" placements-new.json

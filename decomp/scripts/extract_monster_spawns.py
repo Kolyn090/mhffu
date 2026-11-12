@@ -1,4 +1,4 @@
-"""Export large-monster tables and area spawn sets from FUComplete DATA.BIN."""
+"""Export large-monster tables and area spawn sets from FUComplete or English MHFU DATA.BIN."""
 
 import argparse
 import json
@@ -8,8 +8,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from decode_mhfu import decode_quest, read_index
-from extract_gathering import RANK_NAMES, read_entry, read_maps, u16, u32
+from decode_mhfu import QuestChecksumError, decode_quest, read_index
+from extract_gathering import RANK_NAMES, quest_title, read_maps, stage_resources, u16, u32
 
 
 # IDs follow EmType in the Portable 2nd G executable. Some are NPCs or objects.
@@ -127,16 +127,7 @@ def small_tables(quest, area_by_stage):
     return tables
 
 
-def quest_title(quest, visual_data):
-    # The visual data points to language tables, then to the title string.
-    language_index = u32(quest, visual_data + 0x14)
-    title_offset = u32(quest, u32(quest, language_index))
-    if not 0x80 <= title_offset < len(quest):
-        raise ValueError("Invalid quest title pointer")
-    return quest[title_offset:quest.index(0, title_offset)].decode("utf-8")
-
-
-def quest_spawns(quest, entry_id, region, maps):
+def quest_spawns(quest, entry_id, region, maps, language="ja"):
     visual_data = u32(quest, 0)
     quest_id = u16(quest, visual_data + 0x18)
     map_id = quest[visual_data + 0x1C]
@@ -149,7 +140,7 @@ def quest_spawns(quest, entry_id, region, maps):
     return {
         "archive_entry": entry_id,
         "quest_id": quest_id,
-        "title_ja": quest_title(quest, visual_data),
+        f"title_{language}": quest_title(quest, visual_data),
         "map_id": map_id,
         "rank_code": rank_id,
         "rank": RANK_NAMES[rank_id],
@@ -163,19 +154,20 @@ def quest_spawns(quest, entry_id, region, maps):
 def extract(archive):
     with archive.open("rb") as source:
         entries = read_index(source)
-        game_sub = read_entry(source, entries[56])
-        if (game_sub[:4] != b"MWo3" or game_sub[32:64].split(b"\0")[0] != b"game_sub.ovl"
-                or u32(game_sub, 8) != 0x09C14280):
-            raise ValueError("Expected the ULJM05500 game_sub overlay at archive entry 56")
-        maps = read_maps(game_sub, u32(game_sub, 8))
+        layout, _, game_sub, _ = stage_resources(source, entries)
+        maps = read_maps(game_sub, layout.game_sub_base, layout.map_table)
         quests = []
         for entry in entries:
             try:
                 quest, region = decode_quest(source, entry)
+            except QuestChecksumError:
+                raise
             except ValueError:
                 continue
             try:
-                quests.append(quest_spawns(quest, entry.entry_id, region, maps))
+                if layout.language == "en" and region != "NA/EU":
+                    raise ValueError(f"Unexpected {region} checksum region for English quest")
+                quests.append(quest_spawns(quest, entry.entry_id, region, maps, layout.language))
             except (ValueError, IndexError, KeyError, struct.error) as error:
                 raise ValueError(f"Entry {entry.entry_id}: {error}") from error
     if not quests:
@@ -196,7 +188,7 @@ def extract(archive):
     for map_id, info in maps.items():
         info["quest_ids"] = quests_by_map[map_id]
     return {
-        "archive_base_disc_id": "ULJM05500",
+        "archive_base_disc_id": layout.disc_id,
         "notes": {
             "area_index": "Zero-based slot in the quest map's stage list. Null means the raw stage "
                           "ID has no slot in that list.",

@@ -1,1 +1,0 @@
-py .\extract_monster_spawns.py "E:\Games\MH2G Game\DATA.BIN" spawns.json

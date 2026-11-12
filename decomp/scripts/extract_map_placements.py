@@ -10,14 +10,11 @@ from collections import defaultdict
 from pathlib import Path
 
 from decode_mhfu import read_index
-from extract_gathering import read_entry, read_maps, u16, u32
+from extract_gathering import read_entry, read_maps, stage_resources, u16, u32
 
 
 DRAW_COMMAND = struct.Struct("<4BI")
 DRAW_DESCRIPTOR = struct.Struct("<hhII")
-STAGE_COUNT = 267
-STAGE_OVERLAY_BASE = 5490
-STAGE_PAC_BASE = 5756
 
 # Four standalone grass textures identified visually in the Forest and Hills TMHs.
 # The same artwork can have a different texture index in different stages.
@@ -80,7 +77,7 @@ def draw_lists(overlay, base, text_size, memory_size):
             candidates[descriptor] = lists
     if len(candidates) > 1:
         raise ValueError("Ambiguous stage draw descriptor")
-    return next(iter(candidates.values()), [])
+    return next(iter(candidates.items()), (None, []))
 
 
 def placements(overlay, base, opcode, parameter):
@@ -131,15 +128,27 @@ def stage_commands(overlay, stage_id):
         raise ValueError(f"Unexpected overlay for stage {stage_id}")
     if 64 + text_size > len(overlay):
         raise ValueError(f"Truncated overlay text for stage {stage_id}")
+    descriptor, lists = draw_lists(overlay, base, text_size, 64 + text_size + data_size + bss_size)
+    metadata_ranges = [(start, start + len(records) * DRAW_COMMAND.size) for _, start, records in lists]
+    if descriptor is not None:
+        metadata_ranges.append((descriptor, descriptor + DRAW_DESCRIPTOR.size))
     commands = []
-    for model, start, records in draw_lists(overlay, base, text_size, 64 + text_size + data_size + bss_size):
+    for model, start, records in lists:
         for index, (opcode, flags, alpha, mesh, parameter) in enumerate(records):
+            parameter_offset = parameter - base if parameter else None
+            if (opcode in PLACED_OPS or opcode == 15) and parameter_offset is not None and any(
+                low <= parameter_offset < high for low, high in metadata_ranges
+            ):
+                # Some command parameters initially point back into draw metadata.
+                # Those bytes cannot be decoded as an on-disk position record.
+                placement = {"placement_kind": "unresolved_parameters"}
+            else:
+                placement = placements(overlay, base, opcode, parameter)
             commands.append({
                 "model": model, "command_index": index,
                 "command_offset": start + index * DRAW_COMMAND.size,
                 "opcode": opcode, "flags": flags, "alpha_threshold": alpha,
-                "mesh_index": mesh, "parameter_offset": parameter - base if parameter else None,
-                **placements(overlay, base, opcode, parameter),
+                "mesh_index": mesh, "parameter_offset": parameter_offset, **placement,
             })
     return commands
 
@@ -262,19 +271,17 @@ def extract(archive, formats_tools):
 
     with archive.open("rb") as source:
         entries = read_index(source)
-        game_sub = read_entry(source, entries[56])
-        base = u32(game_sub, 8)
-        if game_sub[32:44] != b"game_sub.ovl" or base != 0x09C14280:
-            raise ValueError("Expected the ULJM05500 game_sub overlay at entry 56")
-        maps = read_maps(game_sub, base)
+        layout, _, game_sub, stage_entries = stage_resources(source, entries)
+        maps = read_maps(game_sub, layout.game_sub_base, layout.map_table)
         forest = set(maps[2]["stage_ids_by_area_index"] + maps[16]["stage_ids_by_area_index"])
         stages = {}
-        for stage_id in range(STAGE_COUNT):
-            overlay_id = STAGE_OVERLAY_BASE + stage_id
-            pac_id = STAGE_PAC_BASE + stage_id if stage_id else None
+        if layout.stage_pac_base + len(stage_entries) > len(entries):
+            raise ValueError("Archive is missing the expected base stage packages")
+        for stage_id, overlay in enumerate(stage_entries):
+            pac_id = layout.stage_pac_base + stage_id if stage_id else None
             try:
-                commands = stage_commands(read_entry(source, entries[overlay_id]), stage_id)
-                record = {"overlay_entry": overlay_id, "base_pac_entry": pac_id, "draw_commands": commands}
+                commands = stage_commands(read_entry(source, overlay), stage_id)
+                record = {"overlay_entry": overlay.entry_id, "base_pac_entry": pac_id, "draw_commands": commands}
                 if formats_tools is not None and stage_id in forest:
                     pac = read_entry(source, entries[pac_id])
                     record["grass_patches"], record["unresolved_grass_commands"] = grass_patches(
@@ -284,12 +291,13 @@ def extract(archive, formats_tools):
                 raise ValueError(f"Stage {stage_id}: {error}") from error
             stages[stage_id] = record
     return {
-        "archive_base_disc_id": "ULJM05500", "maps": maps, "stages": stages,
+        "archive_base_disc_id": layout.disc_id, "maps": maps, "stages": stages,
         "notes": {
             "coordinates": "Stage-space XYZ in game units. Use the map's stage list to resolve area indices.",
             "mesh_geometry": "The draw command has no separate object origin. Placement is in the model's vertices.",
             "animated_anchor": "Stored reference position. Runtime movement, rotation or scaling can change the rendered geometry.",
             "runtime_parameters": "The command has no position data stored in the overlay file.",
+            "unresolved_parameters": "The stored parameter pointer references draw metadata. A position cannot be read from it.",
             "stage_specific": "Custom draw behavior. Mesh index is the stored command field and may not identify the final rendered geometry.",
             "grass_patches": "Connected geometry using four visually identified standalone grass textures in Forest and Hills. "
                              "Estimated bases are bounds-derived, and one tuft can span multiple patches. "

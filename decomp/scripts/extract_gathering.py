@@ -1,4 +1,4 @@
-"""Export Portable 2nd G / FUComplete quest gathering and fish-spawn tables."""
+"""Export FUComplete and English MHFU quest gathering and fish-spawn tables."""
 
 import argparse
 import json
@@ -7,9 +7,10 @@ import re
 import struct
 import sys
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
-from decode_mhfu import decode_quest, read_exact, read_index
+from decode_mhfu import QuestChecksumError, decode_quest, read_entry_data, read_index
 
 
 MAP_NAMES = (
@@ -33,6 +34,23 @@ FISH_DEFINITIONS = 0x09CCE3B0
 TUTORIAL_FISH = 0x09CE03A8
 FISH_KIND_COUNT = 37
 TUTORIAL_MISSION_FLAG = 1 << 23
+STAGE_COUNT = 267
+
+
+@dataclass(frozen=True)
+class GatheringLayout:
+    disc_id: str
+    game_sub_base: int
+    map_table: int
+    fish_definitions: int
+    tutorial_fish: int
+    language: str
+    stage_pac_base: int
+
+
+JP_LAYOUT = GatheringLayout("ULJM05500", 0x09C14280, MAP_STAGE_TABLE, FISH_DEFINITIONS, TUTORIAL_FISH, "ja", 5756)
+# ULUS10391 v1.01. Table contents and pointers were checked in this build's own game_sub.
+EN_LAYOUT = GatheringLayout("ULUS10391", 0x09C19100, 0x09CE4808, 0x09CD3538, 0x09CE5538, "en", 5808)
 
 
 def u16(data, offset):
@@ -44,16 +62,20 @@ def u32(data, offset):
 
 
 def read_entry(source, entry):
-    source.seek(entry.byte_offset)
-    return read_exact(source, entry.readable_bytes)
+    return read_entry_data(source, entry)
 
 
 def read_item_names(source, entry):
     """Read group 1 of str_tbl.pac, the UTF-8 item-name offset table."""
-    data = read_entry(source, entry)
+    return parse_item_names(read_entry(source, entry))
+
+
+def parse_item_names(data):
     if u32(data, 0) < 3 or u32(data, 4) != 8:
-        raise ValueError("Entry 15 is not the expected Portable 2nd G string pack")
+        raise ValueError("Unexpected item string pack header")
     start, end = u32(data, 12), u32(data, 16)
+    if not 0 < start < end <= len(data):
+        raise ValueError("Invalid item-name group boundaries")
     group = data[start:end]
     if u32(group, 0) != 4 * 1262:
         raise ValueError("Unsupported item-name table")
@@ -66,21 +88,105 @@ def read_item_names(source, entry):
     return names
 
 
-def read_maps(game_sub, base):
+def read_maps(game_sub, base, map_table=MAP_STAGE_TABLE):
     """Resolve map slots to stage IDs using the same table as the game."""
     maps = {}
     for map_id, name in enumerate(MAP_NAMES):
-        count, address = struct.unpack_from("<II", game_sub, MAP_STAGE_TABLE - base + map_id * 8)
+        count, address = struct.unpack_from("<II", game_sub, map_table - base + map_id * 8)
         if not count and name is None:
             continue
         offset = address - base
         if name is None or not 1 <= count <= 16 or not 0 <= offset <= len(game_sub) - 2 * count:
             raise ValueError(f"Unsupported stage list for map {map_id}")
         stages = struct.unpack_from(f"<{count}H", game_sub, offset)
-        if any(stage >= 267 for stage in stages):
+        if any(stage >= STAGE_COUNT for stage in stages):
             raise ValueError(f"Out-of-range stage ID for map {map_id}")
         maps[map_id] = {"name": name, "stage_ids_by_area_index": stages}
     return maps
+
+
+def find_stage_overlays(source, entries):
+    """Find the game_sub and stage overlays by their embedded MWo3 names."""
+    overlays = {}
+    for entry in entries:
+        if entry.readable_bytes < 64:
+            continue
+        header = read_entry_data(source, entry, 64)
+        if header.startswith(b"MWo3"):
+            name = header[32:64].split(b"\0", 1)[0]
+            if name == b"game_sub.ovl" or re.fullmatch(rb"stage[0-9]{3}\.ovl", name):
+                if name in overlays:
+                    raise ValueError(f"Duplicate overlay name {name!r}")
+                overlays[name] = entry
+    stage_names = [f"stage{stage:03}.ovl".encode("ascii") for stage in range(STAGE_COUNT)]
+    missing = [name for name in [b"game_sub.ovl", *stage_names] if name not in overlays]
+    if missing:
+        raise ValueError(f"Missing {len(missing)} required overlays, starting with {missing[0]!r}")
+    return overlays[b"game_sub.ovl"], [overlays[name] for name in stage_names]
+
+
+def find_english_item_names(source, entries):
+    english_names = []
+    for entry in entries:
+        if entry.readable_bytes >= 8 and read_entry_data(source, entry, 8) == b"\x17\0\0\0\x08\0\0\0":
+            try:
+                names = read_item_names(source, entry)
+            except (ValueError, struct.error):
+                continue
+            if (names[1], names[7], names[161], names[246]) == (
+                "Book of Combos 1", "Potion", "Honey", "Insect Husk"
+            ):
+                english_names.append((entry.entry_id, names))
+    if len(english_names) != 1:
+        raise ValueError(f"Expected one English item string pack, found {len(english_names)}")
+    return english_names[0]
+
+
+def stage_resources(source, entries):
+    """Resolve and verify region-specific stage resources for the extractors."""
+    if entries and entries[0].outer_encrypted:
+        layout = EN_LAYOUT
+        game_entry, stage_entries = find_stage_overlays(source, entries)
+    else:
+        layout = JP_LAYOUT
+        if len(entries) <= 5490 + STAGE_COUNT - 1:
+            raise ValueError("Archive is missing the expected stage overlays")
+        game_entry = entries[56]
+        stage_entries = entries[5490:5490 + STAGE_COUNT]
+    game_sub = read_entry(source, game_entry)
+    base = u32(game_sub, 8)
+    if (game_sub[:4] != b"MWo3" or game_sub[32:64].split(b"\0")[0] != b"game_sub.ovl"
+            or base != layout.game_sub_base):
+        raise ValueError(f"Unsupported game_sub build at entry {game_entry.entry_id}")
+    return layout, game_entry, game_sub, stage_entries
+
+
+def gathering_resources(source, entries):
+    """Load region-specific resources, then use the same data readers for both builds."""
+    layout, game_entry, game_sub, stage_entries = stage_resources(source, entries)
+    if layout.language == "en":
+        name_entry_id, item_names = find_english_item_names(source, entries)
+    else:
+        name_entry_id = 15
+        item_names = read_item_names(source, entries[name_entry_id])
+    base = layout.game_sub_base
+    maps = read_maps(game_sub, base, layout.map_table)
+    fish_items = [u16(game_sub, layout.fish_definitions - base + 12 * fish)
+                  for fish in range(FISH_KIND_COUNT)]
+    if fish_items[0] != 0 or any(not 0 < item < len(item_names) for item in fish_items[1:]):
+        raise ValueError("Invalid fish item definitions")
+    tutorial_fish = read_weights(game_sub, layout.tutorial_fish - base, len(game_sub), fishing=True)
+    fish_stages = {}
+    for stage_id, stage_entry in enumerate(stage_entries):
+        result = fishing_spots(read_entry(source, stage_entry), stage_id)
+        if result is not None:
+            fish_stages[stage_id] = result
+    resources = {
+        "game_sub_entry": game_entry.entry_id,
+        "item_string_pack_entry": name_entry_id,
+        "stage_overlay_entries": [entry.entry_id for entry in stage_entries],
+    }
+    return layout, item_names, maps, fish_stages, fish_items, tutorial_fish, resources
 
 
 def fishing_spots(stage, stage_id):
@@ -184,17 +290,29 @@ def gathering_spots(quest, stages):
             raise ValueError(f"Missing node terminator for area {area_index}")
 
 
-def quest_records(source, entries, maps, fish_stages, fish_items, tutorial_fish):
+def quest_title(quest, visual_data):
+    """Follow the first language table to its title (Japanese or English)."""
+    language_index = u32(quest, visual_data + 0x14)
+    title_offset = u32(quest, u32(quest, language_index))
+    if not 0x80 <= title_offset < len(quest):
+        raise ValueError("Invalid quest title pointer")
+    return quest[title_offset:quest.index(0, title_offset)].decode("utf-8")
+
+
+def quest_records(source, entries, maps, fish_stages, fish_items, tutorial_fish, *, english=False):
     """Discover all checksum-valid 2NDG quest entries in the archive."""
     for entry in entries:
         try:
             quest, region = decode_quest(source, entry)
+        except QuestChecksumError:
+            raise
         except ValueError:
             continue
         quest_id, map_id, rank_id = u16(quest, 0x64), quest[0x68], quest[0x44]
         try:
             stages = maps[map_id]["stage_ids_by_area_index"]
             rank = RANK_NAMES[rank_id]
+            title = quest_title(quest, u32(quest, 0)) if english else None
             spots = list(gathering_spots(quest, stages))
             for area, stage in enumerate(stages):
                 if stage not in fish_stages:
@@ -213,11 +331,16 @@ def quest_records(source, entries, maps, fish_stages, fish_items, tutorial_fish)
                     })
         except (ValueError, IndexError, KeyError, struct.error) as error:
             raise ValueError(f"Cannot parse quest {quest_id} (entry {entry.entry_id}): {error}") from error
-        yield {
+        record = {
             "archive_entry": entry.entry_id, "quest_id": quest_id,
             "map_id": map_id, "rank_code": rank_id, "rank": rank,
             "quest_checksum_region": region, "spots": spots,
         }
+        if english:
+            if region != "NA/EU":
+                raise ValueError(f"Unexpected {region} checksum region for English quest {quest_id}")
+            record["title_en"] = title
+        yield record
 
 
 def main():
@@ -230,30 +353,17 @@ def main():
     try:
         with args.archive.open("rb") as source:
             entries = read_index(source)
-            if len(entries) <= 5756:
-                raise ValueError("Archive is missing the expected stage overlays")
-            game_sub = read_entry(source, entries[56])
-            if game_sub[:4] != b"MWo3" or game_sub[32:64].split(b"\0")[0] != b"game_sub.ovl":
-                raise ValueError("Entry 56 is not the expected game_sub overlay")
-            base = u32(game_sub, 8)
-            if base != 0x09C14280:
-                raise ValueError("Unsupported game_sub build")
-            maps = read_maps(game_sub, base)
-            fish_items = [u16(game_sub, FISH_DEFINITIONS - base + 12 * fish)
-                          for fish in range(FISH_KIND_COUNT)]
-            tutorial_fish = read_weights(game_sub, TUTORIAL_FISH - base, len(game_sub), fishing=True)
-            fish_stages = {}
-            for stage_id in range(267):
-                result = fishing_spots(read_entry(source, entries[5490 + stage_id]), stage_id)
-                if result is not None:
-                    fish_stages[stage_id] = result
-            item_names = read_item_names(source, entries[15])
-            quests = list(quest_records(source, entries, maps, fish_stages, fish_items, tutorial_fish))
+            layout, item_names, maps, fish_stages, fish_items, tutorial_fish, resources = gathering_resources(source, entries)
+            english = layout.language == "en"
+            if english and args.english_item_definitions:
+                raise ValueError("English item names come directly from this archive")
+            quests = list(quest_records(source, entries, maps, fish_stages, fish_items, tutorial_fish,
+                                        english=english))
         if not quests:
             raise ValueError("No checksum-valid 2NDG quests found")
         used_items = sorted({outcome["item_id"] for quest in quests for spot in quest["spots"]
                              for outcome in spot["outcomes"] if outcome["item_id"] is not None})
-        items = {item: {"name_ja": item_names[item]} for item in used_items}
+        items = {item: {f"name_{layout.language}": item_names[item]} for item in used_items}
         if args.english_item_definitions:
             text = args.english_item_definitions.read_text(encoding="utf-8")
             labels = re.findall(r"/\*\s*([^*]*?)\s*\*/\s*\{", text)
@@ -263,7 +373,7 @@ def main():
                 items[item]["name_en"] = labels[item]
         counts = Counter(spot["method"] for quest in quests for spot in quest["spots"])
         result = {
-            "archive_base_disc_id": "ULJM05500",
+            "archive_base_disc_id": layout.disc_id,
             "notes": {
                 "nominal_percent": "Stored weights per selection roll, out of 100. "
                                    "This excludes the random generator's modulo bias.",
@@ -277,6 +387,8 @@ def main():
             },
             "maps": maps, "items": items, "spot_counts": counts, "quests": quests,
         }
+        if english:
+            result["source_entries"] = resources
         with args.output.open("x", encoding="utf-8") as output:
             json.dump(result, output, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
             output.write("\n")
